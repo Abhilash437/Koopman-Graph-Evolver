@@ -32,24 +32,72 @@ async def main():
         print("No code changes detected or git diff failed.")
         return
 
-    # 2. Configure Single Comprehensive Agent
-    # By consolidating the review into a single agent, we make exactly 1 API call per push.
-    # This completely bypasses the aggressive free-tier rate limits (5 RPM) and ensures success.
-    comprehensive_instructions = (
-        "You are a Principal Lead Code Reviewer. Analyze the provided code changes for:\n"
-        "1. Security: Hardcoded secrets, injection risks, insecure dependencies.\n"
-        "2. Reliability: Missing error handling, edge cases, lack of tests.\n"
-        "3. Architecture: Efficiency, naming, design patterns.\n\n"
-        "Provide a single, cohesive, professional GitHub Pull Request comment formatted beautifully in Markdown. "
-        "Highlight any specific findings with suggested fixes. If no issues are found, explicitly say so with a brief summary of the changes."
+    # 2. Configure Specialized Agents (Gemini 2.0)
+    # Now that billing is enabled, we can use the incredibly powerful 2.0 models
+    # and run them concurrently in parallel without fear of rate limits.
+    security_instructions = (
+        "You are a Senior Security Engineer. Analyze code changes strictly for security risks:\n"
+        "- Hardcoded credentials or API keys\n"
+        "- Injection vulnerabilities (SQLi, XSS, Command Injection)\n"
+        "- Insecure dependencies or access control flaws\n"
+        "Provide a clear list of issues or state 'No security issues found'."
     )
 
-    print("Spawning comprehensive review agent (Single Request to respect free tier limits)...")
-    final_review = await run_specialized_review("gemini-3.5-flash", comprehensive_instructions, diff_content)
-    
-    if not final_review.strip():
-        final_review = "*The review pipeline ran, but the AI agent did not return any text. This is usually due to API errors (like 429 Quota Exceeded or 404 Model Not Found). Please check the Action logs.*"
+    qa_instructions = (
+        "You are a Senior QA Automation Engineer. Analyze code changes for reliability:\n"
+        "- Missing error handling or unhandled exceptions\n"
+        "- Boundary and edge cases\n"
+        "- Lack of appropriate unit or integration tests for new code\n"
+        "Provide suggestions to improve robustness and testing coverage."
+    )
 
+    architect_instructions = (
+        "You are a Principal Software Architect. Analyze code changes for design & performance:\n"
+        "- Algorithmic efficiency and potential bottlenecks\n"
+        "- Adherence to design patterns and SOLID principles\n"
+        "- Readability, naming conventions, and duplication\n"
+        "Provide recommendations for code cleanup, optimization, and design quality."
+    )
+
+    print("Spawning specialized agents concurrently (Powered by Gemini 2.0)...")
+    
+    # Executing reviews concurrently for lightning fast speed
+    security_task = run_specialized_review("gemini-2.0-pro", security_instructions, diff_content)
+    qa_task = run_specialized_review("gemini-2.0-flash", qa_instructions, diff_content)
+    architect_task = run_specialized_review("gemini-2.0-pro", architect_instructions, diff_content)
+
+    security_review, qa_review, architect_review = await asyncio.gather(
+        security_task, qa_task, architect_task
+    )
+
+    # 3. Aggregator Agent synthesizes the reviews
+    aggregator_instructions = (
+        "You are the Lead Code Reviewer. You are given review comments from three specialized agents: "
+        "a Security Auditor, a QA Engineer, and a Software Architect.\n"
+        "Your task is to merge, clean, and synthesize their findings into a single, cohesive, professional "
+        "GitHub Pull Request comment. Remove duplicate findings or conflicting advice, format it beautifully "
+        "with Markdown, and provide a brief overall rating/summary."
+    )
+
+    aggregator_config = LocalAgentConfig(
+        model="gemini-2.0-flash",
+        system_instructions=aggregator_instructions
+    )
+
+    synthesis_prompt = (
+        f"Synthesize the following code review reports:\n\n"
+        f"--- SECURITY REVIEW ---\n{security_review}\n\n"
+        f"--- QA & TESTS REVIEW ---\n{qa_review}\n\n"
+        f"--- ARCHITECTURE & PERFORMANCE REVIEW ---\n{architect_review}\n"
+    )
+
+    print("Synthesizing final review report...")
+    async with Agent(config=aggregator_config) as aggregator:
+        response = await aggregator.chat(synthesis_prompt)
+        final_review = await response.text()
+        
+    if not final_review.strip():
+        final_review = "*The review pipeline ran, but the AI agents did not return any text. Please check the Action logs.*"
     # 4. Post the review comments to GitHub
     github_token = os.getenv("GITHUB_TOKEN")
     repo_name = os.getenv("GITHUB_REPOSITORY")
