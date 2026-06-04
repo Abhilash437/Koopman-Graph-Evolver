@@ -1,4 +1,5 @@
 import os
+import sys
 import subprocess
 import asyncio
 from github import Github
@@ -7,14 +8,22 @@ from google.antigravity import Agent, LocalAgentConfig
 # 1. Fetch code changes from Git
 def get_git_diff():
     # Detect target branch, falling back to comparing HEAD against parent commit if not on a PR
-    # GITHUB_BASE_REF is an empty string on 'push' events, so we use 'or' to fallback.
-    target = os.getenv("GITHUB_BASE_REF") or "HEAD~1"
+    # GITHUB_BASE_REF is an empty string on 'push' events.
+    target = os.getenv("GITHUB_BASE_REF")
+    
+    # In GitHub Actions, local branches aren't created for base refs, so we must prefix with origin/
+    if target:
+        target = f"origin/{target}"
+    else:
+        target = "HEAD~1"
+        
     try:
-        return subprocess.check_output(["git", "diff", target]).decode("utf-8")
+        # We explicitly exclude lockfiles to save tokens and prevent large-diff crashes
+        return subprocess.check_output(["git", "diff", target, "--", ".", ":(exclude)*.lock", ":(exclude)*-lock.json"]).decode("utf-8")
     except subprocess.CalledProcessError as e:
-        print(f"Error running git diff: {e}")
-        # Return empty diff if command fails or history is incomplete
-        return ""
+        print(f"Error running git diff against {target}: {e}")
+        # Terminate workflow with non-zero exit code so it fails the PR check instead of silently passing
+        sys.exit(1)
 
 # Helper function to run an individual agent's review
 async def run_specialized_review(model: str, instructions: str, diff: str) -> str:
@@ -33,13 +42,17 @@ async def main():
         return
 
     # 2. Configure Specialized Agents (Gemini 3.5)
-    
-    # CRITICAL INSTRUCTION for agents so they don't hallucinate about deprecated models
+
+    # CRITICAL INSTRUCTION for agents so they don't hallucinate about deprecated models or act like chatbots
     system_context = (
         "\n\nCRITICAL CONTEXT FOR THIS REVIEW: "
-        "The models 'gemini-2.0-pro' and 'gemini-2.0-flash' have been completely deprecated by the Google API. "
+        "1. The models 'gemini-2.0-pro' and 'gemini-2.0-flash' have been completely deprecated by the Google API. "
         "The string 'gemini-3.5-flash' is the current, fully supported, and correct model identifier. "
-        "Do NOT flag 'gemini-3.5-flash' as an invalid model, and do NOT suggest reverting to the deprecated 2.0 generation."
+        "Do NOT flag 'gemini-3.5-flash' as an invalid model.\n"
+        "2. PERSONA ENFORCEMENT: You are an automated CI/CD pipeline script running in a headless GitHub Actions environment. "
+        "You do NOT have access to a local file system, you CANNOT save files, and you CANNOT create markdown artifacts. "
+        "You are NOT an interactive chat bot. Do NOT ask the user to choose between 'Option A or B', and do NOT tell the user you saved an artifact. "
+        "Your ONLY capability is to generate the final, definitive Markdown text that will be posted directly as a one-shot GitHub PR comment."
     )
 
     SPECIALIST_REGISTRY = [
@@ -123,7 +136,7 @@ async def main():
 
     if not final_review.strip():
         final_review = "*The review pipeline ran, but the AI agents did not return any text. Please check the Action logs.*"
-        
+
     # 4. Post the review comments to GitHub
     github_token = os.getenv("GITHUB_TOKEN")
     repo_name = os.getenv("GITHUB_REPOSITORY")
