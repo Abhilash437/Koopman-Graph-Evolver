@@ -62,9 +62,9 @@ async def main():
     print("Spawning specialized agents concurrently (Powered by Gemini 2.0)...")
     
     # Executing reviews concurrently for lightning fast speed
-    security_task = run_specialized_review("gemini-2.0-pro", security_instructions, diff_content)
-    qa_task = run_specialized_review("gemini-2.0-flash", qa_instructions, diff_content)
-    architect_task = run_specialized_review("gemini-2.0-pro", architect_instructions, diff_content)
+    security_task = run_specialized_review("gemini-3.5-flash", security_instructions, diff_content)
+    qa_task = run_specialized_review("gemini-3.5-flash", qa_instructions, diff_content)
+    architect_task = run_specialized_review("gemini-3.5-flash", architect_instructions, diff_content)
 
     security_review, qa_review, architect_review = await asyncio.gather(
         security_task, qa_task, architect_task
@@ -80,7 +80,7 @@ async def main():
     )
 
     aggregator_config = LocalAgentConfig(
-        model="gemini-2.0-flash",
+        model="gemini-3.5-flash",
         system_instructions=aggregator_instructions
     )
 
