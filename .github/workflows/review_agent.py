@@ -32,66 +32,23 @@ async def main():
         print("No code changes detected or git diff failed.")
         return
 
-    # 2. Configure Specialists
-    security_instructions = (
-        "You are a Senior Security Engineer. Analyze code changes strictly for security risks:\n"
-        "- Hardcoded credentials or API keys\n"
-        "- Injection vulnerabilities (SQLi, XSS, Command Injection)\n"
-        "- Insecure dependencies or access control flaws\n"
-        "Provide a clear list of issues or state 'No security issues found'."
+    # 2. Configure Single Comprehensive Agent
+    # By consolidating the review into a single agent, we make exactly 1 API call per push.
+    # This completely bypasses the aggressive free-tier rate limits (5 RPM) and ensures success.
+    comprehensive_instructions = (
+        "You are a Principal Lead Code Reviewer. Analyze the provided code changes for:\n"
+        "1. Security: Hardcoded secrets, injection risks, insecure dependencies.\n"
+        "2. Reliability: Missing error handling, edge cases, lack of tests.\n"
+        "3. Architecture: Efficiency, naming, design patterns.\n\n"
+        "Provide a single, cohesive, professional GitHub Pull Request comment formatted beautifully in Markdown. "
+        "Highlight any specific findings with suggested fixes. If no issues are found, explicitly say so with a brief summary of the changes."
     )
 
-    qa_instructions = (
-        "You are a Senior QA Automation Engineer. Analyze code changes for reliability:\n"
-        "- Missing error handling or unhandled exceptions\n"
-        "- Boundary and edge cases\n"
-        "- Lack of appropriate unit or integration tests for new code\n"
-        "Provide suggestions to improve robustness and testing coverage."
-    )
-
-    architect_instructions = (
-        "You are a Principal Software Architect. Analyze code changes for design & performance:\n"
-        "- Algorithmic efficiency and potential bottlenecks\n"
-        "- Adherence to design patterns and SOLID principles\n"
-        "- Readability, naming conventions, and duplication\n"
-        "Provide recommendations for code cleanup, optimization, and design quality."
-    )
-
-    print("Spawning specialized agents sequentially (to respect API rate limits)...")
+    print("Spawning comprehensive review agent (Single Request to respect free tier limits)...")
+    final_review = await run_specialized_review("gemini-3.5-flash", comprehensive_instructions, diff_content)
     
-    # Executing reviews sequentially instead of concurrently to avoid free-tier rate limits
-    security_review = await run_specialized_review("gemini-3.5-flash", security_instructions, diff_content)
-    qa_review = await run_specialized_review("gemini-3.5-flash", qa_instructions, diff_content)
-    architect_review = await run_specialized_review("gemini-3.5-flash", architect_instructions, diff_content)
-
-    # 3. Aggregator Agent synthesizes the reviews
-    aggregator_instructions = (
-        "You are the Lead Code Reviewer. You are given review comments from three specialized agents: "
-        "a Security Auditor, a QA Engineer, and a Software Architect.\n"
-        "Your task is to merge, clean, and synthesize their findings into a single, cohesive, professional "
-        "GitHub Pull Request comment. Remove duplicate findings or conflicting advice, format it beautifully "
-        "with Markdown, and provide a brief overall rating/summary."
-    )
-
-    aggregator_config = LocalAgentConfig(
-        model="gemini-3.5-flash",
-        system_instructions=aggregator_instructions
-    )
-
-    synthesis_prompt = (
-        f"Synthesize the following code review reports:\n\n"
-        f"--- SECURITY REVIEW ---\n{security_review}\n\n"
-        f"--- QA & TESTS REVIEW ---\n{qa_review}\n\n"
-        f"--- ARCHITECTURE & PERFORMANCE REVIEW ---\n{architect_review}\n"
-    )
-
-    print("Synthesizing final review report...")
-    async with Agent(config=aggregator_config) as aggregator:
-        response = await aggregator.chat(synthesis_prompt)
-        final_review = await response.text()
-        
     if not final_review.strip():
-        final_review = "*The review pipeline ran, but the AI agents did not return any text. This is usually due to API errors (like 429 Quota Exceeded or 404 Model Not Found). Please check the Action logs.*"
+        final_review = "*The review pipeline ran, but the AI agent did not return any text. This is usually due to API errors (like 429 Quota Exceeded or 404 Model Not Found). Please check the Action logs.*"
 
     # 4. Post the review comments to GitHub
     github_token = os.getenv("GITHUB_TOKEN")
