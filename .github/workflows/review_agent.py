@@ -7,7 +7,8 @@ from google.antigravity import Agent, LocalAgentConfig
 # 1. Fetch code changes from Git
 def get_git_diff():
     # Detect target branch, falling back to comparing HEAD against parent commit if not on a PR
-    target = os.getenv("GITHUB_BASE_REF", "HEAD~1")
+    # GITHUB_BASE_REF is an empty string on 'push' events, so we use 'or' to fallback.
+    target = os.getenv("GITHUB_BASE_REF") or "HEAD~1"
     try:
         return subprocess.check_output(["git", "diff", target]).decode("utf-8")
     except subprocess.CalledProcessError as e:
