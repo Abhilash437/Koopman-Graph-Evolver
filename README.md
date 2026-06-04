@@ -10,50 +10,76 @@ This project implements a **Graph-Aware Koopman Autoencoder** to model the globa
 
 ## Repository Structure
 
-```
+The original experimental notebooks have been fully ported into a modular Python package with a Command Line Interface (CLI) and a Streamlit Web GUI.
+
+```text
 .
-├── Graph Dynamics Learner/
-│   ├── generalized_kgn.ipynb                               # Main notebook with MD17 data loading, training, and evaluation
-│   ├── dynamics-learner-rmd17.ipynb                        # Secondary MD17 experiment notebook
-│   └── Project_Summary_Graph_Aware_Koopman.md              # Comprehensive technical documentation & mathematical framework
-├── Phase 1/                                                # Early graph evolution experiments (SBMs)
-├── Phase 2/                                                # Graph-RNNs and non-linear baseline explorations
-├── Phase 3/                                                # Scaling linear transitions and Koopman theory
-├── Docs/                                                   # Legacy technical and planning documentation
-└── README.md                                               # This file
+├── koopman_evolver/           # Core Python package
+│   ├── data/                  # Kaggle dataset downloading and MD17 windowing/splitting logic
+│   ├── models/                # GraphAwareKoopmanNet and GraphAwareGRUNet architectures
+│   ├── training/              # PyTorch training loops with physical regularization
+│   ├── evaluation/            # PhysicsEval suite computing long-horizon geometric drifts
+│   └── cli.py                 # Command Line Interface entrypoint
+├── app.py                     # Streamlit Web GUI Dashboard
+├── requirements.txt           # Python dependencies
+├── Dockerfile                 # Containerization logic
+├── docker-compose.yml         # Local volume mapping and service definitions
+├── Graph Dynamics Learner/    # Legacy Jupyter Notebooks and mathematical summaries
+└── Phase 1, 2, 3/             # Legacy graph evolution experiments
 ```
 
-## Quick Start
+## Quick Start (Docker)
 
-### Requirements
+The recommended way to run the application is via Docker. This keeps your system clean while automatically mapping models, plots, and datasets to your local file system via Docker Volumes.
 
-- Python 3.10+
-- PyTorch 2.0+
-- NumPy, Matplotlib
-- kagglehub (for downloading MD17 data)
+### Launch the Web GUI Dashboard
 
-Install dependencies:
+We provide an interactive **Streamlit** dashboard to run training jobs and generate physical diagnostic plots:
 
 ```bash
-pip install torch numpy matplotlib kagglehub
+docker compose up koopman-gui
 ```
 
-### Running the Code
+*Access the dashboard at `http://localhost:8501` in your browser.*
 
-Open the Jupyter notebook and run the cells sequentially:
+### Using the CLI via Docker
+
+You can trigger training and evaluation runs directly from the terminal without using the GUI.
+
+**Train a model:**
 
 ```bash
-jupyter notebook "Graph Dynamics Learner/generalized_kgn.ipynb"
+# Models: 'koopman' or 'gru'
+# Molecules: 'ethanol', 'malonaldehyde', or 'aspirin'
+docker compose run --build --rm koopman train --molecule ethanol --model koopman --epochs 50
 ```
 
-The notebook includes:
+**Evaluate trained models:**
 
-1. **Data Pipeline**: `MD17AdapterV2` for downloading, rotating, and translating raw coordinate trajectories into sliding windows of molecular graphs.
-2. **Model Architectures**:
-   - `GraphAwareKoopmanNet` (Linear, Lie-Algebra constrained)
-   - `GraphAwareGRUNet` (Non-linear baseline)
-3. **Training Engine**: `GraphTrainer` for batching, optimization, and checkpointing.
-4. **Deep Physical Diagnostics**: `PhysicsEval` suite comparing real-world drift of Bond Lengths, Bond Angles, and Torsions.
+```bash
+docker compose run --rm koopman eval --molecule ethanol \
+  --koopman-ckpt checkpoints/graph_aware_koopman_ethanol_best.pt \
+  --gru-ckpt checkpoints/graph_aware_gru_ethanol_best.pt
+```
+
+*Note: Checkpoints will be automatically saved to `./checkpoints/` and diagnostic plots to `./results/` on your host machine.*
+
+## Quick Start (Native Python)
+
+If you prefer not to use Docker, you can run the code natively:
+
+```bash
+# 1. Install requirements
+pip install -r requirements.txt
+
+# 2. Run the Streamlit GUI
+streamlit run app.py
+
+# 3. OR Run the CLI
+python -m koopman_evolver.cli train --molecule ethanol --model koopman --epochs 50
+```
+
+*(Note: The datasets will automatically be downloaded from Kaggle using `kagglehub` the first time you run the code).*
 
 ## Key Findings (MD17 Dataset)
 

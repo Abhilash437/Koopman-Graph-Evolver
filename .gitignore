@@ -8,3 +8,8 @@
 *.zip
 *.pt
 /Graph Dynamics Learner/checkpoints_archive
+/results
+/checkpoints
+/data
+*__pycache__
+*.DS_Store

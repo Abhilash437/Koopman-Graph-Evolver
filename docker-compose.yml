@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  koopman:
+    build: .
+    container_name: koopman-cli
+    # Expose Streamlit port
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./checkpoints:/app/checkpoints
+      - ./results:/app/results
+    
+  # A secondary service specifically to spin up the Streamlit GUI
+  koopman-gui:
+    build: .
+    container_name: koopman-gui
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./checkpoints:/app/checkpoints
+      - ./results:/app/results
+    # Override entrypoint to launch the streamlit app
+    entrypoint: ["streamlit", "run", "app.py"]
