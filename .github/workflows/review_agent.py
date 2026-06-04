@@ -57,7 +57,7 @@ async def main():
     )
 
     print("Spawning specialized agents in parallel...")
-
+    
     # Executing reviews concurrently
     security_task = run_specialized_review("gemini-3.5-pro", security_instructions, diff_content)
     qa_task = run_specialized_review("gemini-3.5-flash", qa_instructions, diff_content)
@@ -90,8 +90,7 @@ async def main():
 
     print("Synthesizing final review report...")
     async with Agent(config=aggregator_config) as aggregator:
-        response = await aggregator.chat(s
-                                          ynthesis_prompt)
+        response = await aggregator.chat(synthesis_prompt)
         final_review = await response.text()
 
     # 4. Post the review comments to GitHub
@@ -110,7 +109,7 @@ async def main():
             print("Successfully posted review to Pull Request.")
         elif event_name == "push":
             commit_sha = os.getenv("GITHUB_SHA", "HEAD")[:7]
-            issue_title = f"⚠️ Antigravity Code Review Findings (Commit {commit_sha})"
+            issue_title = f"Antigravity Code Review Findings (Commit {commit_sha})"
             repo.create_issue(
                 title=issue_title,
                 body=f"### Code Review for Commit `{commit_sha}`\n\n{final_review}"
