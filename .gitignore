@@ -1,0 +1,10 @@
+/brain
+/kaggle
+/Phase 1
+/Phase 2
+/Phase 3
+/Docs
+/MD17
+*.zip
+*.pt
+/Graph Dynamics Learner/checkpoints_archive
