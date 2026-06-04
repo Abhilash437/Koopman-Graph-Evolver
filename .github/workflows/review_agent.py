@@ -7,12 +7,19 @@ from google.antigravity import Agent, LocalAgentConfig
 # 1. Fetch code changes from Git
 def get_git_diff():
     # Detect target branch, falling back to comparing HEAD against parent commit if not on a PR
-    # GITHUB_BASE_REF is an empty string on 'push' events, so we use 'or' to fallback.
-    target = os.getenv("GITHUB_BASE_REF") or "HEAD~1"
+    # GITHUB_BASE_REF is an empty string on 'push' events.
+    target = os.getenv("GITHUB_BASE_REF")
+    
+    # In GitHub Actions, local branches aren't created for base refs, so we must prefix with origin/
+    if target:
+        target = f"origin/{target}"
+    else:
+        target = "HEAD~1"
+        
     try:
         return subprocess.check_output(["git", "diff", target]).decode("utf-8")
     except subprocess.CalledProcessError as e:
-        print(f"Error running git diff: {e}")
+        print(f"Error running git diff against {target}: {e}")
         # Return empty diff if command fails or history is incomplete
         return ""
 
@@ -33,7 +40,7 @@ async def main():
         return
 
     # 2. Configure Specialized Agents (Gemini 3.5)
-    
+
     # CRITICAL INSTRUCTION for agents so they don't hallucinate about deprecated models
     system_context = (
         "\n\nCRITICAL CONTEXT FOR THIS REVIEW: "
@@ -123,7 +130,7 @@ async def main():
 
     if not final_review.strip():
         final_review = "*The review pipeline ran, but the AI agents did not return any text. Please check the Action logs.*"
-        
+
     # 4. Post the review comments to GitHub
     github_token = os.getenv("GITHUB_TOKEN")
     repo_name = os.getenv("GITHUB_REPOSITORY")
