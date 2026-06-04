@@ -57,16 +57,12 @@ async def main():
         "Provide recommendations for code cleanup, optimization, and design quality."
     )
 
-    print("Spawning specialized agents in parallel...")
+    print("Spawning specialized agents sequentially (to respect API rate limits)...")
     
-    # Executing reviews concurrently
-    security_task = run_specialized_review("gemini-3.5-pro", security_instructions, diff_content)
-    qa_task = run_specialized_review("gemini-3.5-flash", qa_instructions, diff_content)
-    architect_task = run_specialized_review("gemini-3.5-pro", architect_instructions, diff_content)
-
-    security_review, qa_review, architect_review = await asyncio.gather(
-        security_task, qa_task, architect_task
-    )
+    # Executing reviews sequentially instead of concurrently to avoid free-tier rate limits
+    security_review = await run_specialized_review("gemini-2.0-pro", security_instructions, diff_content)
+    qa_review = await run_specialized_review("gemini-2.0-flash", qa_instructions, diff_content)
+    architect_review = await run_specialized_review("gemini-2.0-pro", architect_instructions, diff_content)
 
     # 3. Aggregator Agent synthesizes the reviews
     aggregator_instructions = (
@@ -78,7 +74,7 @@ async def main():
     )
 
     aggregator_config = LocalAgentConfig(
-        model="gemini-3.5-flash",
+        model="gemini-2.0-flash",
         system_instructions=aggregator_instructions
     )
 
@@ -93,6 +89,9 @@ async def main():
     async with Agent(config=aggregator_config) as aggregator:
         response = await aggregator.chat(synthesis_prompt)
         final_review = await response.text()
+        
+    if not final_review.strip():
+        final_review = "*The review pipeline ran, but the AI agents did not return any text. This is usually due to API errors (like 429 Quota Exceeded or 404 Model Not Found). Please check the Action logs.*"
 
     # 4. Post the review comments to GitHub
     github_token = os.getenv("GITHUB_TOKEN")
