@@ -60,9 +60,9 @@ async def main():
     print("Spawning specialized agents sequentially (to respect API rate limits)...")
     
     # Executing reviews sequentially instead of concurrently to avoid free-tier rate limits
-    security_review = await run_specialized_review("gemini-1.5-pro", security_instructions, diff_content)
-    qa_review = await run_specialized_review("gemini-1.5-flash", qa_instructions, diff_content)
-    architect_review = await run_specialized_review("gemini-1.5-pro", architect_instructions, diff_content)
+    security_review = await run_specialized_review("gemini-3.5-flash", security_instructions, diff_content)
+    qa_review = await run_specialized_review("gemini-3.5-flash", qa_instructions, diff_content)
+    architect_review = await run_specialized_review("gemini-3.5-flash", architect_instructions, diff_content)
 
     # 3. Aggregator Agent synthesizes the reviews
     aggregator_instructions = (
@@ -74,7 +74,7 @@ async def main():
     )
 
     aggregator_config = LocalAgentConfig(
-        model="gemini-1.5-flash",
+        model="gemini-3.5-flash",
         system_instructions=aggregator_instructions
     )
 
