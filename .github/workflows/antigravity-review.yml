@@ -1,4 +1,4 @@
-ame: Antigravity Code Review
+name: Antigravity Code Review
 on:
   pull_request:
     types: [opened, synchronize]
