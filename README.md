@@ -10,6 +10,12 @@ This project implements a **Graph-Aware Koopman Autoencoder** to model the globa
 
 ## Repository Structure
 
+### Recent Improvements
+
+- **Coordinate-Space Evaluation**: The `_rollout_mse` function has been updated to compute the error on physical (x, y, z) coordinate outputs rather than disjoint latent spaces, providing a standardized, physical metric.
+- **BPTT for Baseline**: The GRU Baseline now utilizes Backpropagation Through Time (BPTT) with multi-step rollouts during training to alleviate exposure bias and improve long-term stability.
+- **Aligned Evaluation Sample Sizes**: Both models now evaluate their s-step errors by rolling out from all valid $(t, t+s)$ pairs in a trajectory, ensuring perfectly aligned performance comparisons.
+
 The original experimental notebooks have been fully ported into a modular Python package with a Command Line Interface (CLI) and a Streamlit Web GUI.
 
 ```text

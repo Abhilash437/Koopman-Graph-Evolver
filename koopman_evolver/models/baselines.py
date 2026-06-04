@@ -123,20 +123,48 @@ class GraphAwareGRUNet(nn.Module):
         h_seq = outputs
         B, T, n_atoms, hidden_dim = h_seq.shape
 
-        h_t_list, h_tgt_list = [], []
+        unroll_steps = 4
+        
+        l_dyn = 0.0
+        h_t_list = []
+        for b, L in enumerate(lengths):
+            if L <= unroll_steps: continue
+            h_t_list.append(h_seq[b, :L-unroll_steps])
+            
+        if len(h_t_list) > 0:
+            h_curr = torch.cat(h_t_list, dim=0)
+            for step in range(1, unroll_steps + 1):
+                h_curr = self.transition_step(h_curr)
+                tgt_list = []
+                for b, L in enumerate(lengths):
+                    if L <= unroll_steps: continue
+                    tgt_list.append(h_seq[b, step:L-unroll_steps+step])
+                h_tgt = torch.cat(tgt_list, dim=0)
+                l_dyn = l_dyn + F.mse_loss(h_curr, h_tgt)
+            l_dyn = l_dyn / unroll_steps
+        else:
+            # Fallback for very short sequences
+            h_t_list, h_tgt_list = [], []
+            for b, L in enumerate(lengths):
+                if L < 2: continue
+                h_t_list.append(h_seq[b, :L-1])
+                h_tgt_list.append(h_seq[b, 1:L])
+            h_t = torch.cat(h_t_list, dim=0)
+            h_tgt = torch.cat(h_tgt_list, dim=0)
+            h_pred = self.transition_step(h_t)
+            l_dyn = F.mse_loss(h_pred, h_tgt)
+
+        # 1-step collapse loss
+        tgt_0_list, tgt_1_list = [], []
         for b, L in enumerate(lengths):
             if L < 2: continue
-            h_t_list.append(h_seq[b, :L-1])
-            h_tgt_list.append(h_seq[b, 1:L])
-
-        h_t = torch.cat(h_t_list, dim=0)
-        h_tgt = torch.cat(h_tgt_list, dim=0)
-
-        h_pred = self.transition_step(h_t)
-        l_dyn = F.mse_loss(h_pred, h_tgt)
-
-        step_diff = torch.norm(h_tgt - h_t, dim=-1)
-        step_norm = torch.norm(h_t, dim=-1) + 1e-8
+            tgt_0_list.append(h_seq[b, :L-1])
+            tgt_1_list.append(h_seq[b, 1:L])
+        h_t0 = torch.cat(tgt_0_list, dim=0)
+        h_t1 = torch.cat(tgt_1_list, dim=0)
+        
+        step_diff = torch.norm(h_t1 - h_t0, dim=-1)
+        step_norm = torch.norm(h_t0, dim=-1) + 1e-8
         relative_change = (step_diff / step_norm).mean()
         l_collapse = torch.relu(0.05 - relative_change)
 

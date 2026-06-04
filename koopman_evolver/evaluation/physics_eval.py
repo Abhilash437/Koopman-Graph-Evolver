@@ -466,42 +466,31 @@ class GraphAwareKoopmanEvaluator:
         return torch.cat(z_list, dim=0)
 
     def _rollout_mse(self, model, z, lengths):
-        z_cpu = z.cpu()
         mse_per_step_mean = np.zeros(self.rollout_steps)
         mse_per_step_std  = np.zeros(self.rollout_steps)
 
-        if not hasattr(model, 'get_global_K'):
-            # GRU model (calls forward_rollout starting from frame 0)
-            for s in range(1, self.rollout_steps + 1):
-                errors = []
-                for b, T in enumerate(lengths):
-                    if T <= s + 1:
-                        continue
-                    seed = z_cpu[b:b+1, :1, :, :]
-                    preds = model.forward_rollout(
-                        seed.to(self.device), steps=s + 1, latent_seed=True
-                    ).cpu()
-                    z_pred   = preds[0, s]
-                    z_target = z_cpu[b, s]
-                    errors.append(F.mse_loss(z_pred, z_target).item())
-                mse_per_step_mean[s - 1] = np.mean(errors) if errors else 0.0
-                mse_per_step_std[s - 1]  = np.std(errors)  if errors else 0.0
-        else:
-            # Koopman model (calls transition_step across all sequence frames in parallel)
-            for s in range(1, self.rollout_steps + 1):
-                errors = []
-                for b, T in enumerate(lengths):
-                    if T <= s + 1:
-                        continue
-                    z_init   = z[b, :T - s].to(self.device)  # (T-s, 9, 64)
-                    z_target = z[b, s:T].to(self.device)     # (T-s, 9, 64)
+        for s in range(1, self.rollout_steps + 1):
+            errors = []
+            for b, T in enumerate(lengths):
+                if T <= s:
+                    continue
+                z_init   = z[b, :T - s].to(self.device)
+                z_target = z[b, s:T].to(self.device)
 
-                    h = z_init
-                    for _ in range(s):
-                        h = model.transition_step(h)
-                    errors.append(F.mse_loss(h, z_target).item())
-                mse_per_step_mean[s - 1] = np.mean(errors) if errors else 0.0
-                mse_per_step_std[s - 1]  = np.std(errors)  if errors else 0.0
+                h = z_init
+                for _ in range(s):
+                    h = model.transition_step(h)
+                
+                B_steps, n_atoms, h_dim = h.shape
+                h_flat = h.reshape(B_steps, n_atoms * h_dim)
+                z_target_flat = z_target.reshape(B_steps, n_atoms * h_dim)
+                
+                coords_pred = model.decoder(h_flat)
+                coords_target = model.decoder(z_target_flat)
+                
+                errors.append(F.mse_loss(coords_pred, coords_target).item())
+            mse_per_step_mean[s - 1] = np.mean(errors) if errors else 0.0
+            mse_per_step_std[s - 1]  = np.std(errors)  if errors else 0.0
 
         return mse_per_step_mean, mse_per_step_std
 

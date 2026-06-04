@@ -102,13 +102,13 @@ This prevented the decoder from uniformly scaling the molecule and forced it to 
 
 ## 6. Detailed Experiments & Physical Diagnostics
 
-To rigorously test our architecture, we compared it against a heavily parameterized, highly non-linear baseline (`GraphAwareGRUNet`). We evaluated both models on three progressively complex molecules from the MD17 dataset.
+To rigorously test our architecture, we compared it against a heavily parameterized, highly non-linear baseline (`GraphAwareGRUNet`). To ensure a fair comparison and alleviate exposure bias, the baseline was explicitly trained using Backpropagation Through Time (BPTT) with multi-step rollouts. We evaluated both models on three progressively complex molecules from the MD17 dataset.
 
 ### Evaluation Metrics
 
 Instead of merely looking at point-wise MSE, we built a comprehensive `PhysicsEval` suite to measure structural integrity over a 30-step autonomous rollout horizon:
 
-1. **Rollout MSE:** The standard mean-squared error of the predicted coordinates vs. ground truth.
+1. **Rollout MSE (Coordinate-Space):** The mean-squared error computed strictly on the decoded physical coordinates $(x, y, z)$ rather than disjoint latent spaces. Both models are rigorously evaluated by iterating over all valid $(t, t+s)$ pairs in a given trajectory to align sample sizes.
 2. **Latent Stability:**
    - *Graph Energy Ratio ($E_t / E_0$):* Measures whether the latent state is collapsing (approaching $0$) or exploding (approaching $\infty$). Perfect stability is exactly $1.0$.
    - *Node Embedding Retention:* Measures the pairwise distance retention inside the latent space itself.
