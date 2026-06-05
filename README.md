@@ -57,13 +57,13 @@ You can trigger training and evaluation runs directly from the terminal without 
 ```bash
 # Models: 'koopman' or 'gru'
 # Molecules: 'ethanol', 'malonaldehyde', or 'aspirin'
-docker compose run --build --rm koopman train --molecule ethanol --model koopman --epochs 50
+docker compose run --build --rm koopman train --md17 ethanol --model koopman --epochs 50
 ```
 
 **Evaluate trained models:**
 
 ```bash
-docker compose run --rm koopman eval --molecule ethanol \
+docker compose run --rm koopman eval --md17 ethanol \
   --koopman-ckpt checkpoints/graph_aware_koopman_ethanol_best.pt \
   --gru-ckpt checkpoints/graph_aware_gru_ethanol_best.pt
 ```
@@ -82,7 +82,7 @@ pip install -r requirements.txt
 streamlit run app.py
 
 # 3. OR Run the CLI
-python -m koopman_evolver.cli train --molecule ethanol --model koopman --epochs 50
+python -m koopman_evolver.cli train --md17 ethanol --model koopman --epochs 50
 ```
 
 *(Note: The datasets will automatically be downloaded from Kaggle using `kagglehub` the first time you run the code).*

@@ -12,7 +12,11 @@ st.title("🧬 Graph-Aware Koopman Dynamics Evolver")
 st.markdown("Explore deterministic, long-horizon global dynamics for MD17 molecules using structurally constrained Koopman Autoencoders vs Unconstrained GRUs.")
 
 st.sidebar.header("Configuration")
-molecule = st.sidebar.selectbox("Molecule", ["ethanol", "malonaldehyde", "aspirin"])
+dataset = st.sidebar.selectbox("Dataset", ["MD17", "MD22"])
+if dataset == "MD17":
+    molecule = st.sidebar.selectbox("Molecule", ["ethanol", "malonaldehyde", "aspirin"])
+else:
+    molecule = st.sidebar.selectbox("Molecule", ["ac-ala3-nhme"])
 model_type = st.sidebar.selectbox("Model Architecture", ["koopman", "gru"])
 epochs = st.sidebar.slider("Training Epochs", min_value=1, max_value=200, value=50)
 rollout_steps = st.sidebar.slider("Evaluation Rollout Steps", min_value=10, max_value=50, value=29)
@@ -23,7 +27,8 @@ st.write("Train the selected model on the MD17 dataset. Models are automatically
 if st.button(f"Train {model_type.upper()} on {molecule.capitalize()}"):
     with st.spinner(f"Training {model_type} on {molecule} for {epochs} epochs... (Check your terminal for live logs!)"):
         args = argparse.Namespace(
-            molecule=molecule,
+            md17=molecule if dataset == "MD17" else None,
+            md22=molecule if dataset == "MD22" else None,
             model=model_type,
             epochs=epochs,
             batch_size=16,
@@ -49,7 +54,8 @@ if can_eval:
     if st.button("Run Evaluation Suite"):
         with st.spinner("Running PhysicsEval suite and generating plots..."):
             args = argparse.Namespace(
-                molecule=molecule,
+                md17=molecule if dataset == "MD17" else None,
+                md22=molecule if dataset == "MD22" else None,
                 koopman_ckpt=koop_ckpt,
                 gru_ckpt=gru_ckpt,
                 rollout_steps=rollout_steps,
