@@ -10,13 +10,9 @@ from .md17_adapter import DynamicsDatasetAdapter
 class MD22Adapter(DynamicsDatasetAdapter):
     """
     Graph-based adapter for the MD22 molecular dynamics benchmark.
-    Downloads the dataset if not present, and applies Principal Axis alignment
-    (SVD) to scale robustly to large peptides like Ac-Ala3-NHMe (42 atoms).
+    Applies Principal Axis alignment (SVD) to scale robustly to large peptides 
+    like Ac-Ala3-NHMe (42 atoms).
     """
-    
-    _MD22_URLS = {
-        "ac-ala3-nhme": "http://www.quantum-machine.org/gdml/repo/datasets/md22_Ac-Ala3-NHMe.npz"
-    }
 
     _ATOM_COUNTS = {
         "ac-ala3-nhme": 42
@@ -55,20 +51,7 @@ class MD22Adapter(DynamicsDatasetAdapter):
     def input_dim(self) -> int:
         return 6  # [x, y, z, vx, vy, vz]
 
-    def _ensure_downloaded(self):
-        if not os.path.exists(self.path):
-            if self.molecule in self._MD22_URLS:
-                url = self._MD22_URLS[self.molecule]
-                print(f"Downloading MD22 dataset for {self.molecule} from {url}...")
-                os.makedirs(os.path.dirname(self.path), exist_ok=True)
-                urllib.request.urlretrieve(url, self.path)
-                print(f"Successfully downloaded to {self.path}")
-            else:
-                raise FileNotFoundError(f"File {self.path} not found and no URL available for {self.molecule}.")
-
     def load(self) -> Tuple[GraphDatasetSplit, GraphDatasetSplit]:
-        self._ensure_downloaded()
-        
         # 1. Read raw file
         raw = np.load(self.path, allow_pickle=True)
         coords = raw["R"] if "R" in raw else raw["coords"]
