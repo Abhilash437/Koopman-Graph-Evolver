@@ -13,3 +13,5 @@
 /data
 *__pycache__
 *.DS_Store
+*.ipynb
+/Graph Dynamics Learner/
