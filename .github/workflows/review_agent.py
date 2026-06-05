@@ -18,8 +18,15 @@ def get_git_diff():
         target = "HEAD~1"
         
     try:
-        # We explicitly exclude lockfiles to save tokens and prevent large-diff crashes
-        return subprocess.check_output(["git", "diff", target, "--", ".", ":(exclude)*.lock", ":(exclude)*-lock.json"]).decode("utf-8")
+        # We explicitly exclude lockfiles, notebooks, system junk, and the Graph Dynamics Learner folder to save tokens and prevent crashes
+        return subprocess.check_output([
+            "git", "diff", target, "--", ".",
+            ":(exclude)*.lock",
+            ":(exclude)*-lock.json",
+            ":(exclude)*.ipynb",
+            ":(exclude)*.DS_Store",
+            ":(exclude)Graph Dynamics Learner/*"
+        ]).decode("utf-8")
     except subprocess.CalledProcessError as e:
         print(f"Error running git diff against {target}: {e}")
         # Terminate workflow with non-zero exit code so it fails the PR check instead of silently passing
