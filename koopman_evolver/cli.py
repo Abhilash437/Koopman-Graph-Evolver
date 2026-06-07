@@ -38,6 +38,8 @@ def build_parser():
     train_parser.add_argument("--batch-size", type=int, default=16, help="Batch size")
     train_parser.add_argument("--hidden-dim", type=int, default=64, help="Hidden dimension size")
     train_parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
+    train_parser.add_argument("--weight-decay", type=float, default=1e-4, help="AdamW weight decay")
+    train_parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
     train_parser.add_argument("--out-dir", type=str, default="./checkpoints", help="Output directory for checkpoints")
     
     # Eval command
@@ -74,6 +76,17 @@ def get_data_path(dataset: str, molecule: str) -> str:
     return npz_files[0]
 
 def train(args):
+    # Set random seeds for reproducibility
+    if args.seed is not None:
+        import numpy as np
+        torch.manual_seed(args.seed)
+        np.random.seed(args.seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(args.seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        print(f"[seed={args.seed}] Random seeds set for reproducibility.")
+    
     device = get_device()
     dataset = "md17" if args.md17 else "md22"
     molecule = args.md17 if args.md17 else args.md22
@@ -101,14 +114,16 @@ def train(args):
             node_dim=6, edge_dim=1, hidden_dim=args.hidden_dim, 
             latent_dim=latent_dim, n_atoms=n_atoms
         )
-        ckpt_name = f"graph_aware_koopman_{molecule}_best.pt"
+        seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
+        ckpt_name = f"graph_aware_koopman_{molecule}{seed_tag}_best.pt"
     elif args.model == "gru":
         model = GraphAwareGRUNet(
             edge_index=edge_index,
             node_dim=6, edge_dim=1, hidden_dim=args.hidden_dim, 
             latent_dim=latent_dim, n_atoms=n_atoms
         )
-        ckpt_name = f"graph_aware_gru_{molecule}_best.pt"
+        seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
+        ckpt_name = f"graph_aware_gru_{molecule}{seed_tag}_best.pt"
     elif args.model == "flat":
         flat_latent = 42 * args.hidden_dim if molecule == "stachyose" else latent_dim
         model = FlatKoopmanNet(
@@ -116,9 +131,10 @@ def train(args):
             input_dim=6,
             latent_dim=flat_latent
         )
-        ckpt_name = f"flat_koopman_{molecule}_best.pt"
+        seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
+        ckpt_name = f"flat_koopman_{molecule}{seed_tag}_best.pt"
         
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     
     os.makedirs(args.out_dir, exist_ok=True)
     
