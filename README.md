@@ -100,7 +100,8 @@ We rigorously tested the models across 30-step autonomous prediction horizons on
 | **Rollout MSE @ 28 Steps** | **0.774** | 0.790 | 3.533 (Spatial Collapse) |
 | **Ethanol Mean Bond Drift**| **0.000 Å** | ~0.12 Å | ~0.015 Å |
 
-**Conclusion:** 
+**Conclusion:**
+
 1. **The Spatial Collapse:** Flat architectures completely disintegrated structurally over long horizons on large molecules.
 2. **The Temporal Compounding:** GRUs excel at short-term prediction (Step 1-15) but non-linear errors compound catastrophically at longer horizons.
 3. **Graph Koopman Supremacy:** By combining Graph Message Passing (for spatial rigidity) with linear Koopman operators (for temporal stability), the architecture overtakes recurrent baselines at $T \geq 28$ steps without ever exploding.
