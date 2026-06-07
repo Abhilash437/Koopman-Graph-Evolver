@@ -882,3 +882,443 @@ class PhysicsEval:
         plt.show()
 
 
+
+
+@dataclass
+class ThreeWayEvalResults:
+    """Container for the 3-way ablation comparison results."""
+    # Rollout MSE (coordinate space)
+    flat_mse_mean: np.ndarray
+    flat_mse_std: np.ndarray
+    graph_koop_mse_mean: np.ndarray
+    graph_koop_mse_std: np.ndarray
+    graph_gru_mse_mean: np.ndarray
+    graph_gru_mse_std: np.ndarray
+
+    # Spectral radii
+    rho_flat: float
+    rho_graph_koop: float
+
+    # Physical diagnostics
+    flat_bond_drift: np.ndarray
+    flat_angle_drift: np.ndarray
+    flat_torsion_drift: np.ndarray
+    graph_koop_bond_drift: np.ndarray
+    graph_koop_angle_drift: np.ndarray
+    graph_koop_torsion_drift: np.ndarray
+    graph_gru_bond_drift: np.ndarray
+    graph_gru_angle_drift: np.ndarray
+    graph_gru_torsion_drift: np.ndarray
+
+    # Latent energy ratio (only meaningful for graph models, flat uses norm)
+    flat_energy_ratio: np.ndarray
+    graph_koop_energy_ratio: np.ndarray
+    graph_gru_energy_ratio: np.ndarray
+
+    # Parameter counts
+    flat_params: int
+    graph_koop_params: int
+    graph_gru_params: int
+
+    meta: dict = field(default_factory=dict)
+
+class ThreeWayAblationEvaluator:
+    """
+    Evaluator for the Flat Koopman vs Graph Koopman vs Graph GRU ablation study.
+
+    Computes all metrics in coordinate space for fair comparison:
+    - Rollout MSE (decoded coordinates)
+    - Bond length drift, bond angle drift, torsion angle drift
+    - Spectral radii of K operators
+    - Latent energy stability
+    """
+
+    def __init__(
+        self,
+        flat_model: nn.Module,
+        graph_koop_model: nn.Module,
+        graph_gru_model: nn.Module,
+        device: str = "cpu",
+        rollout_steps: int = 29,
+        n_atoms: int = 9,
+        hidden_dim: int = 64,
+    ):
+        self.flat_model = flat_model.to(device).eval()
+        self.graph_koop_model = graph_koop_model.to(device).eval()
+        self.graph_gru_model = graph_gru_model.to(device).eval()
+        self.device = device
+        self.rollout_steps = rollout_steps
+        self.n_atoms = n_atoms
+        self.hidden_dim = hidden_dim
+
+    def _extract_topology(self, edge_index):
+        """Extract bonds, angles, and torsions from the molecular graph."""
+        G = nx.Graph()
+        G.add_nodes_from(range(self.n_atoms))
+        edges = edge_index.cpu().T.numpy().tolist()
+        G.add_edges_from(edges)
+        bonds = list(G.edges())
+        angles = []
+        for node in G.nodes():
+            neighbors = list(G.neighbors(node))
+            for i in range(len(neighbors)):
+                for j in range(i + 1, len(neighbors)):
+                    angles.append((neighbors[i], node, neighbors[j]))
+        torsions = []
+        for u, v in G.edges():
+            for w in G.neighbors(u):
+                if w == v:
+                    continue
+                for x in G.neighbors(v):
+                    if x == u or x == w:
+                        continue
+                    torsions.append((w, u, v, x))
+        return bonds, angles, torsions
+
+    def _compute_angles(self, coords, angles):
+        if not angles:
+            return None
+        vals = []
+        for i, j, k in angles:
+            v1 = coords[..., i, :] - coords[..., j, :]
+            v2 = coords[..., k, :] - coords[..., j, :]
+            v1_norm = torch.norm(v1, dim=-1)
+            v2_norm = torch.norm(v2, dim=-1)
+            dot = torch.sum(v1 * v2, dim=-1)
+            cos_theta = torch.clamp(dot / (v1_norm * v2_norm + 1e-8), -1.0, 1.0)
+            theta = torch.acos(cos_theta) * (180.0 / np.pi)
+            vals.append(theta)
+        return torch.stack(vals, dim=-1)
+
+    def _compute_torsions(self, coords, torsions):
+        if not torsions:
+            return None
+        vals = []
+        for i, j, k, l in torsions:
+            b1 = coords[..., j, :] - coords[..., i, :]
+            b2 = coords[..., k, :] - coords[..., j, :]
+            b3 = coords[..., l, :] - coords[..., k, :]
+            n1 = torch.cross(b1, b2, dim=-1)
+            n2 = torch.cross(b2, b3, dim=-1)
+            n1_norm = torch.norm(n1, dim=-1)
+            n2_norm = torch.norm(n2, dim=-1)
+            dot = torch.sum(n1 * n2, dim=-1)
+            cos_phi = torch.clamp(dot / (n1_norm * n2_norm + 1e-8), -1.0, 1.0)
+            phi = torch.acos(cos_phi) * (180.0 / np.pi)
+            vals.append(phi)
+        return torch.stack(vals, dim=-1)
+
+    def _decode_rollout_flat(self, model, node_feats, lengths, steps):
+        """Encode + rollout + decode for the FLAT Koopman model."""
+        with torch.no_grad():
+            # Encode full sequence
+            h_seq = model(node_feats)  # (B, T, latent_dim)
+            # Take initial latent state
+            h0 = h_seq[:, :1, :]  # (B, 1, latent_dim)
+            # Rollout in latent space
+            rollout = model.forward_rollout(h0, steps=steps + 1, latent_seed=True)
+            # Decode to coordinates: (B, steps+1, latent_dim) → (B, steps+1, n_atoms, 3)
+            coords = model.decoder(rollout)
+        return coords.cpu()
+
+    def _decode_rollout_graph(self, model, node_feats, edge_idx, edge_feats, lengths, steps):
+        """Encode + rollout + decode for a GRAPH model."""
+        with torch.no_grad():
+            # Encode
+            h_seq = model(node_feats, edge_idx, edge_feats, lengths)
+            # h_seq shape: (B, T, n_atoms, hidden_dim) for graph models
+            h0 = h_seq[:, :1, :, :]
+            # Rollout
+            rollout = model.forward_rollout(h0, steps=steps + 1, latent_seed=True)
+            # Decode
+            B, S, n_atoms, h_dim = rollout.shape
+            rollout_flat = rollout.reshape(B * S, n_atoms * h_dim)
+            coords_flat = model.decoder(rollout_flat)
+            coords = coords_flat.reshape(B, S, n_atoms, 3)
+        return coords.cpu()
+
+    def _compute_drifts(self, coords, bonds, angles, torsions):
+        """Compute bond, angle, and torsion drifts from t=0."""
+        # Bond drift
+        b_vals = []
+        for i, j in bonds:
+            b_vals.append(torch.norm(coords[..., i, :] - coords[..., j, :], dim=-1))
+        b_vals = torch.stack(b_vals, dim=-1)
+        b_drift = torch.mean(torch.abs(b_vals - b_vals[:, 0:1, :]), dim=(0, 2)).numpy()
+
+        # Angle drift
+        a_vals = self._compute_angles(coords, angles)
+        if a_vals is not None:
+            a_drift = torch.mean(torch.abs(a_vals - a_vals[:, 0:1, :]), dim=(0, 2)).numpy()
+        else:
+            a_drift = np.zeros(coords.shape[1])
+
+        # Torsion drift
+        t_vals = self._compute_torsions(coords, torsions)
+        if t_vals is not None:
+            t_drift = torch.mean(torch.abs(t_vals - t_vals[:, 0:1, :]), dim=(0, 2)).numpy()
+        else:
+            t_drift = np.zeros(coords.shape[1])
+
+        return b_drift, a_drift, t_drift
+
+    def _compute_rollout_mse(self, coords_pred, coords_true_all, lengths, steps):
+        """Compute coordinate-space MSE at each rollout step."""
+        mse_mean = np.zeros(steps)
+        mse_std = np.zeros(steps)
+
+        for s in range(1, steps + 1):
+            errors = []
+            for b in range(coords_pred.shape[0]):
+                if lengths[b] <= s:
+                    continue
+                pred = coords_pred[b, s]
+                true = coords_true_all[b, s]
+                errors.append(F.mse_loss(pred, true).item())
+            mse_mean[s - 1] = np.mean(errors) if errors else 0.0
+            mse_std[s - 1] = np.std(errors) if errors else 0.0
+        return mse_mean, mse_std
+
+    def _compute_energy_ratio(self, model, node_feats, edge_idx, edge_feats, lengths, steps, is_flat=False):
+        """Compute latent energy ratio E(t) / E(0) over rollout."""
+        with torch.no_grad():
+            if is_flat:
+                h_seq = model(node_feats)
+                h0 = h_seq[:, :1, :]
+                rollout = model.forward_rollout(h0, steps=steps + 1, latent_seed=True)
+                # rollout: (B, steps+1, latent_dim)
+                energy = torch.norm(rollout, dim=-1) ** 2  # (B, steps+1)
+            else:
+                h_seq = model(node_feats, edge_idx, edge_feats, lengths)
+                h0 = h_seq[:, :1, :, :]
+                rollout = model.forward_rollout(h0, steps=steps + 1, latent_seed=True)
+                # rollout: (B, steps+1, n_atoms, hidden_dim)
+                energy = torch.mean(torch.norm(rollout, dim=-1) ** 2, dim=-1)  # (B, steps+1)
+
+        e0 = energy[:, 0:1] + 1e-8
+        ratios = (energy / e0).cpu().numpy()
+        return np.mean(ratios, axis=0)
+
+    def run(self, test_split, steps=29) -> ThreeWayEvalResults:
+        """Run the full 3-way comparison."""
+        node_feats = torch.tensor(test_split.node_features, dtype=torch.float32, device=self.device)
+        edge_feats = torch.tensor(test_split.edge_features, dtype=torch.float32, device=self.device)
+        edge_idx = test_split.edge_index.to(self.device)
+        lengths = test_split.lengths
+
+        bonds, angles, torsions = self._extract_topology(edge_idx)
+        print(f"Topology: {len(bonds)} bonds, {len(angles)} angles, {len(torsions)} torsions")
+
+        # Ground truth coordinates for MSE comparison
+        coords_true = torch.tensor(
+            test_split.node_features[:, :, :, :3],  # (N, T, n_atoms, 3)
+            dtype=torch.float32
+        )
+
+        # Decode rollouts for all three models
+        print("  Decoding Flat Koopman rollout...")
+        coords_flat = self._decode_rollout_flat(self.flat_model, node_feats, lengths, steps)
+        print("  Decoding Graph Koopman rollout...")
+        coords_graph_koop = self._decode_rollout_graph(
+            self.graph_koop_model, node_feats, edge_idx, edge_feats, lengths, steps
+        )
+        print("  Decoding Graph GRU rollout...")
+        coords_graph_gru = self._decode_rollout_graph(
+            self.graph_gru_model, node_feats, edge_idx, edge_feats, lengths, steps
+        )
+
+        # Rollout MSE
+        flat_mse_mean, flat_mse_std = self._compute_rollout_mse(coords_flat, coords_true, lengths, steps)
+        gk_mse_mean, gk_mse_std = self._compute_rollout_mse(coords_graph_koop, coords_true, lengths, steps)
+        gg_mse_mean, gg_mse_std = self._compute_rollout_mse(coords_graph_gru, coords_true, lengths, steps)
+
+        # Physical diagnostics
+        print("  Computing physical diagnostics...")
+        fb, fa, ft = self._compute_drifts(coords_flat, bonds, angles, torsions)
+        gkb, gka, gkt = self._compute_drifts(coords_graph_koop, bonds, angles, torsions)
+        ggb, gga, ggt = self._compute_drifts(coords_graph_gru, bonds, angles, torsions)
+
+        # Spectral radii
+        K_flat = self.flat_model.get_flat_K()
+        rho_flat = float(np.max(np.abs(np.linalg.eigvals(K_flat))))
+
+        K_graph = self.graph_koop_model.get_global_K()
+        rho_graph = float(np.max(np.abs(np.linalg.eigvals(K_graph))))
+
+        # Latent energy ratio
+        print("  Computing latent energy ratios...")
+        flat_energy = self._compute_energy_ratio(
+            self.flat_model, node_feats, edge_idx, edge_feats, lengths, steps, is_flat=True
+        )
+        gk_energy = self._compute_energy_ratio(
+            self.graph_koop_model, node_feats, edge_idx, edge_feats, lengths, steps, is_flat=False
+        )
+        gg_energy = self._compute_energy_ratio(
+            self.graph_gru_model, node_feats, edge_idx, edge_feats, lengths, steps, is_flat=False
+        )
+
+        # Parameter counts
+        flat_params = sum(p.numel() for p in self.flat_model.parameters())
+        gk_params = sum(p.numel() for p in self.graph_koop_model.parameters())
+        gg_params = sum(p.numel() for p in self.graph_gru_model.parameters())
+
+        return ThreeWayEvalResults(
+            flat_mse_mean=flat_mse_mean, flat_mse_std=flat_mse_std,
+            graph_koop_mse_mean=gk_mse_mean, graph_koop_mse_std=gk_mse_std,
+            graph_gru_mse_mean=gg_mse_mean, graph_gru_mse_std=gg_mse_std,
+            rho_flat=rho_flat, rho_graph_koop=rho_graph,
+            flat_bond_drift=fb, flat_angle_drift=fa, flat_torsion_drift=ft,
+            graph_koop_bond_drift=gkb, graph_koop_angle_drift=gka, graph_koop_torsion_drift=gkt,
+            graph_gru_bond_drift=ggb, graph_gru_angle_drift=gga, graph_gru_torsion_drift=ggt,
+            flat_energy_ratio=flat_energy, graph_koop_energy_ratio=gk_energy, graph_gru_energy_ratio=gg_energy,
+            flat_params=flat_params, graph_koop_params=gk_params, graph_gru_params=gg_params,
+            meta=test_split.meta,
+        )
+
+    def print_summary(self, results: ThreeWayEvalResults):
+        """Print a formatted summary table of the ablation results."""
+        sep = "═" * 80
+        thin = "─" * 80
+        mol = results.meta.get("molecule", "?")
+
+        print(sep)
+        print(f"  PHASE 9 ABLATION: Flat Koopman vs Graph Koopman vs Graph GRU — {mol}")
+        print(sep)
+
+        # Parameter counts
+        print(f"\n{'PARAMETER COUNT':^80}")
+        print(thin)
+        print(f"  {'Model':<25} {'Params':>12}")
+        print(f"  {'Flat Koopman (MLP)':<25} {results.flat_params:>12,}")
+        print(f"  {'Graph Koopman (GNN+Kron)':<25} {results.graph_koop_params:>12,}")
+        print(f"  {'Graph GRU (GNN+RNN)':<25} {results.graph_gru_params:>12,}")
+
+        # Spectral radius
+        print(f"\n{'SPECTRAL RADIUS':^80}")
+        print(thin)
+        print(f"  Flat Koopman  ρ(K)       : {results.rho_flat:.6f}  "
+              f"{'✓' if abs(results.rho_flat - 1.0) < 1e-3 else '⚠'}")
+        print(f"  Graph Koopman ρ(K_global): {results.rho_graph_koop:.6f}  "
+              f"{'✓' if abs(results.rho_graph_koop - 1.0) < 5e-2 else '⚠'}")
+
+        # Final step metrics
+        S = len(results.flat_mse_mean) - 1
+        print(f"\n{'ROLLOUT MSE @ step {S+1}':^80}")
+        print(thin)
+        print(f"  Flat Koopman  : {results.flat_mse_mean[S]:.6f}")
+        print(f"  Graph Koopman : {results.graph_koop_mse_mean[S]:.6f}")
+        print(f"  Graph GRU     : {results.graph_gru_mse_mean[S]:.6f}")
+
+        print(f"\n{'PHYSICAL DIAGNOSTICS @ step {S+1}':^80}")
+        print(thin)
+        print(f"  {'Metric':<25} {'Flat Koop':>12} {'Graph Koop':>12} {'Graph GRU':>12}")
+        print(f"  {'Bond Drift (Å)':<25} {results.flat_bond_drift[S]:.6f} "
+              f"{results.graph_koop_bond_drift[S]:>12.6f} {results.graph_gru_bond_drift[S]:>12.6f}")
+        print(f"  {'Angle Drift (°)':<25} {results.flat_angle_drift[S]:.6f} "
+              f"{results.graph_koop_angle_drift[S]:>12.6f} {results.graph_gru_angle_drift[S]:>12.6f}")
+        print(f"  {'Torsion Drift (°)':<25} {results.flat_torsion_drift[S]:.6f} "
+              f"{results.graph_koop_torsion_drift[S]:>12.6f} {results.graph_gru_torsion_drift[S]:>12.6f}")
+
+        print(f"\n{'LATENT ENERGY RATIO @ step {S+1}':^80}")
+        print(thin)
+        print(f"  Flat Koopman  : {results.flat_energy_ratio[S]:.4f}")
+        print(f"  Graph Koopman : {results.graph_koop_energy_ratio[S]:.4f}")
+        print(f"  Graph GRU     : {results.graph_gru_energy_ratio[S]:.4f}")
+
+        # Winner analysis
+        print(f"\n{'WINNER ANALYSIS':^80}")
+        print(thin)
+        metrics = {
+            'Rollout MSE': (results.flat_mse_mean[S], results.graph_koop_mse_mean[S], results.graph_gru_mse_mean[S]),
+            'Bond Drift': (results.flat_bond_drift[S], results.graph_koop_bond_drift[S], results.graph_gru_bond_drift[S]),
+            'Angle Drift': (results.flat_angle_drift[S], results.graph_koop_angle_drift[S], results.graph_gru_angle_drift[S]),
+            'Torsion Drift': (results.flat_torsion_drift[S], results.graph_koop_torsion_drift[S], results.graph_gru_torsion_drift[S]),
+            'Energy Stability': (
+                abs(results.flat_energy_ratio[S] - 1.0),
+                abs(results.graph_koop_energy_ratio[S] - 1.0),
+                abs(results.graph_gru_energy_ratio[S] - 1.0),
+            ),
+        }
+        names = ['Flat Koopman', 'Graph Koopman', 'Graph GRU']
+        for metric_name, vals in metrics.items():
+            winner_idx = np.argmin(vals)
+            print(f"  {metric_name:<25} → {names[winner_idx]}  (best={vals[winner_idx]:.6f})")
+
+        print(sep)
+
+    def plot(self, results: ThreeWayEvalResults, save_path: Optional[str] = None):
+        """Generate the 3-way comparison figure."""
+        FLAT_COLOR = "#7b3294"     # Purple for flat Koopman
+        KOOP_COLOR = "#2166ac"     # Blue for graph Koopman
+        GRU_COLOR = "#d6604d"      # Red for graph GRU
+
+        steps = len(results.flat_mse_mean)
+        steps_arr = np.arange(1, steps + 1)
+        steps_phys = np.arange(results.flat_bond_drift.shape[0])
+
+        mol = results.meta.get("molecule", "?")
+        fig = plt.figure(figsize=(18, 16))
+        gs = gridspec.GridSpec(3, 2, hspace=0.35, wspace=0.25)
+
+        # ─── 1. Rollout MSE ───
+        ax1 = fig.add_subplot(gs[0, :])
+        ax1.plot(steps_arr, results.flat_mse_mean, color=FLAT_COLOR, linewidth=2.5, marker='s', markersize=4, label='Flat Koopman (MLP)')
+        ax1.fill_between(steps_arr, results.flat_mse_mean - results.flat_mse_std, results.flat_mse_mean + results.flat_mse_std, color=FLAT_COLOR, alpha=0.12)
+        ax1.plot(steps_arr, results.graph_koop_mse_mean, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=4, label='Graph Koopman (GNN+Kronecker)')
+        ax1.fill_between(steps_arr, results.graph_koop_mse_mean - results.graph_koop_mse_std, results.graph_koop_mse_mean + results.graph_koop_mse_std, color=KOOP_COLOR, alpha=0.12)
+        ax1.plot(steps_arr, results.graph_gru_mse_mean, color=GRU_COLOR, linewidth=2.5, linestyle='--', marker='x', markersize=5, label='Graph GRU (GNN+RNN)')
+        ax1.fill_between(steps_arr, results.graph_gru_mse_mean - results.graph_gru_mse_std, results.graph_gru_mse_mean + results.graph_gru_mse_std, color=GRU_COLOR, alpha=0.12)
+        ax1.set_ylabel("Rollout MSE (Coordinate Space)", fontsize=12)
+        ax1.set_title(f"Phase 9 Ablation: Flat vs Graph Koopman vs GRU — {mol}", fontsize=14, fontweight='bold', pad=10)
+        ax1.legend(fontsize=11, loc='upper left')
+        ax1.grid(True, linestyle=':', alpha=0.5)
+
+        # ─── 2. Bond Drift ───
+        ax2 = fig.add_subplot(gs[1, 0])
+        ax2.plot(steps_phys, results.flat_bond_drift, color=FLAT_COLOR, linewidth=2.5, marker='s', markersize=3, label='Flat Koopman')
+        ax2.plot(steps_phys, results.graph_koop_bond_drift, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=3, label='Graph Koopman')
+        ax2.plot(steps_phys, results.graph_gru_bond_drift, color=GRU_COLOR, linewidth=2.5, linestyle='--', marker='x', markersize=4, label='Graph GRU')
+        ax2.set_title("Mean Bond Length Drift", fontsize=13, fontweight='bold')
+        ax2.set_xlabel("Prediction Horizon (steps)")
+        ax2.set_ylabel("Drift from t=0 (Å)")
+        ax2.grid(True, linestyle=':', alpha=0.5)
+        ax2.legend(fontsize=9)
+
+        # ─── 3. Angle Drift ───
+        ax3 = fig.add_subplot(gs[1, 1])
+        ax3.plot(steps_phys, results.flat_angle_drift, color=FLAT_COLOR, linewidth=2.5, marker='s', markersize=3)
+        ax3.plot(steps_phys, results.graph_koop_angle_drift, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=3)
+        ax3.plot(steps_phys, results.graph_gru_angle_drift, color=GRU_COLOR, linewidth=2.5, linestyle='--', marker='x', markersize=4)
+        ax3.set_title("Mean Bond Angle Drift", fontsize=13, fontweight='bold')
+        ax3.set_xlabel("Prediction Horizon (steps)")
+        ax3.set_ylabel("Drift from t=0 (Degrees)")
+        ax3.grid(True, linestyle=':', alpha=0.5)
+
+        # ─── 4. Torsion Drift ───
+        ax4 = fig.add_subplot(gs[2, 0])
+        ax4.plot(steps_phys, results.flat_torsion_drift, color=FLAT_COLOR, linewidth=2.5, marker='s', markersize=3)
+        ax4.plot(steps_phys, results.graph_koop_torsion_drift, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=3)
+        ax4.plot(steps_phys, results.graph_gru_torsion_drift, color=GRU_COLOR, linewidth=2.5, linestyle='--', marker='x', markersize=4)
+        ax4.set_title("Mean Torsion Angle Drift", fontsize=13, fontweight='bold')
+        ax4.set_xlabel("Prediction Horizon (steps)")
+        ax4.set_ylabel("Drift from t=0 (Degrees)")
+        ax4.grid(True, linestyle=':', alpha=0.5)
+
+        # ─── 5. Latent Energy Ratio ───
+        ax5 = fig.add_subplot(gs[2, 1])
+        energy_steps = np.arange(len(results.flat_energy_ratio))
+        ax5.plot(energy_steps, results.flat_energy_ratio, color=FLAT_COLOR, linewidth=2.5, marker='s', markersize=3, label='Flat Koopman')
+        ax5.plot(energy_steps, results.graph_koop_energy_ratio, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=3, label='Graph Koopman')
+        ax5.plot(energy_steps, results.graph_gru_energy_ratio, color=GRU_COLOR, linewidth=2.5, linestyle='--', marker='x', markersize=4, label='Graph GRU')
+        ax5.axhline(1.0, color='gray', linewidth=1.0, linestyle=':', alpha=0.7, label='Perfect stability (1.0)')
+        ax5.set_title("Latent Energy Ratio (E_t / E_0)", fontsize=13, fontweight='bold')
+        ax5.set_xlabel("Prediction Horizon (steps)")
+        ax5.set_ylabel("Energy Ratio")
+        ax5.legend(fontsize=9)
+        ax5.grid(True, linestyle=':', alpha=0.5)
+
+        plt.tight_layout()
+        if save_path:
+            plt.savefig(save_path, dpi=150, bbox_inches='tight')
+            print(f"Saved plot to {save_path}")
+        plt.show()
