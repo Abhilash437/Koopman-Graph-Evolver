@@ -1017,8 +1017,10 @@ class ThreeWayAblationEvaluator:
             h0 = h_seq[:, :1, :]  # (B, 1, latent_dim)
             # Rollout in latent space
             rollout = model.forward_rollout(h0, steps=steps + 1, latent_seed=True)
-            # Decode to coordinates: (B, steps+1, latent_dim) → (B, steps+1, n_atoms, 3)
-            coords = model.decoder(rollout)
+            # Decode to coordinates: (B, steps+1, n_atoms, h_dim) → (B, steps+1, n_atoms, 3)
+            B, S, n_atoms, h_dim = rollout.shape
+            rollout_flat = rollout.reshape(B, S, n_atoms * h_dim)
+            coords = model.decoder(rollout_flat)
         return coords.cpu()
 
     def _decode_rollout_graph(self, model, node_feats, edge_idx, edge_feats, lengths, steps):
