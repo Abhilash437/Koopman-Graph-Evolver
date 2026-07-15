@@ -1,3 +1,5 @@
+import os
+os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 import argparse
 import os
 import torch
@@ -9,9 +11,11 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from koopman_evolver.data.md17_adapter import MD17AdapterV2
 from koopman_evolver.data.md22_adapter import MD22Adapter
+from koopman_evolver.data.nbody_adapter import NBodyAdapter
+from koopman_evolver.data.traffic_adapter import TrafficAdapter
 from koopman_evolver.data.dataset_split import GraphDatasetSplit
-from koopman_evolver.models.koopman_net import GraphAwareKoopmanNet
-from koopman_evolver.models.baselines import GraphAwareGRUNet, FlatKoopmanNet
+from koopman_evolver.models.koopman_net import GraphAwareKoopmanNet, EquivariantKoopmanNet
+from koopman_evolver.models.baselines import GraphAwareGRUNet, FlatKoopmanNet, EGNNDynamicsNet
 from koopman_evolver.training.trainer import GraphAwareTrainer
 from koopman_evolver.evaluation.physics_eval import GraphAwareKoopmanEvaluator, PhysicsEval, ThreeWayAblationEvaluator
 
@@ -32,8 +36,12 @@ def build_parser():
     group_train = train_parser.add_mutually_exclusive_group(required=True)
     group_train.add_argument("--md17", type=str, help="MD17 molecule to train on (e.g. ethanol, aspirin, malonaldehyde)")
     group_train.add_argument("--md22", type=str, help="MD22 molecule to train on (e.g. ac-ala3-nhme)")
+    group_train.add_argument("--nbody", type=str, choices=["charged", "springs"], help="Kipf NRI N-body system")
+    group_train.add_argument("--traffic", action="store_true", help="METR-LA traffic dataset")
     
-    train_parser.add_argument("--model", type=str, default="koopman", choices=["koopman", "gru", "flat"], help="Model architecture")
+    train_parser.add_argument("--data-dir", type=str, default="./data", help="Path to local data dir (for nbody/traffic)")
+    
+    train_parser.add_argument("--model", type=str, default="koopman", choices=["koopman", "gru", "flat", "e-gkn", "egnn"], help="Model architecture")
     train_parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
     train_parser.add_argument("--batch-size", type=int, default=16, help="Batch size")
     train_parser.add_argument("--hidden-dim", type=int, default=64, help="Hidden dimension size")
@@ -47,10 +55,16 @@ def build_parser():
     group_eval = eval_parser.add_mutually_exclusive_group(required=True)
     group_eval.add_argument("--md17", type=str, help="MD17 molecule to evaluate")
     group_eval.add_argument("--md22", type=str, help="MD22 molecule to evaluate")
+    group_eval.add_argument("--nbody", type=str, choices=["charged", "springs"], help="Kipf NRI N-body system to evaluate")
+    group_eval.add_argument("--traffic", action="store_true", help="METR-LA traffic dataset to evaluate")
     
-    eval_parser.add_argument("--koopman-ckpt", type=str, required=True, help="Path to Koopman model checkpoint")
-    eval_parser.add_argument("--gru-ckpt", type=str, required=True, help="Path to GRU baseline checkpoint")
+    eval_parser.add_argument("--data-dir", type=str, default="./data", help="Path to local data dir (for nbody/traffic)")
+    
+    eval_parser.add_argument("--koopman-ckpt", type=str, default=None, help="Path to Koopman model checkpoint")
+    eval_parser.add_argument("--gru-ckpt", type=str, default=None, help="Path to GRU baseline checkpoint")
     eval_parser.add_argument("--flat-ckpt", type=str, default=None, help="Path to Flat Koopman checkpoint for 3-way ablation")
+    eval_parser.add_argument("--egkn-ckpt", type=str, default=None, help="Path to E-GKN model checkpoint")
+    eval_parser.add_argument("--egnn-ckpt", type=str, default=None, help="Path to EGNN baseline checkpoint")
     eval_parser.add_argument("--rollout-steps", type=int, default=29, help="Number of steps for rollout evaluation")
     eval_parser.add_argument("--out-dir", type=str, default="./results", help="Output directory for plots")
     
@@ -59,21 +73,27 @@ def build_parser():
 def get_data_path(dataset: str, molecule: str) -> str:
     import kagglehub
     import glob
+    import os
     print(f"Downloading/Locating dataset for {dataset} - {molecule} via kagglehub...")
     if dataset == "md17":
         if molecule == "ethanol":
             path = kagglehub.dataset_download('abhilash437/md17-ethanol')
         else:
             path = kagglehub.dataset_download(f'abhilash437/rmd17-{molecule}')
+        npz_files = glob.glob(os.path.join(path, "*.npz"))
+        if not npz_files:
+            raise FileNotFoundError(f"No .npz file found in {path}")
+        return npz_files[0]
     elif dataset == "md22":
         path = kagglehub.dataset_download(f'abhilash437/md22-{molecule}')
-    else:
-        raise ValueError(f"Unknown dataset {dataset}")
-        
-    npz_files = glob.glob(os.path.join(path, "*.npz"))
-    if not npz_files:
-        raise FileNotFoundError(f"No .npz file found in {path}")
-    return npz_files[0]
+        npz_files = glob.glob(os.path.join(path, "*.npz"))
+        if not npz_files:
+            raise FileNotFoundError(f"No .npz file found in {path}")
+        return npz_files[0]
+    elif dataset == "nbody":
+        return kagglehub.dataset_download('abhilash437/n-body')
+    elif dataset == "traffic":
+        return kagglehub.dataset_download('abhilash437/metrla-traffic')
 
 def train(args):
     # Set random seeds for reproducibility
@@ -88,16 +108,29 @@ def train(args):
         print(f"[seed={args.seed}] Random seeds set for reproducibility.")
     
     device = get_device()
-    dataset = "md17" if args.md17 else "md22"
-    molecule = args.md17 if args.md17 else args.md22
+    if args.md17:
+        dataset, name = "md17", args.md17
+    elif args.md22:
+        dataset, name = "md22", args.md22
+    elif args.nbody:
+        dataset, name = "nbody", args.nbody
+    elif args.traffic:
+        dataset, name = "traffic", "metr-la"
     
-    print(f"[{molecule}] Initializing {dataset} dataset on {device}...")
+    print(f"[{name}] Initializing {dataset} dataset on {device}...")
     
-    data_path = get_data_path(dataset, molecule)
-    if dataset == "md22":
-        adapter = MD22Adapter(path=data_path, molecule=molecule)
-    else:
-        adapter = MD17AdapterV2(path=data_path, molecule=molecule)
+    if dataset in ["md17", "md22"]:
+        data_path = get_data_path(dataset, name)
+        if dataset == "md22":
+            adapter = MD22Adapter(path=data_path, molecule=name)
+        else:
+            adapter = MD17AdapterV2(path=data_path, molecule=name)
+    elif dataset == "nbody":
+        data_path = get_data_path(dataset, name)
+        adapter = NBodyAdapter(data_dir=data_path, system=name)
+    elif dataset == "traffic":
+        data_path = get_data_path(dataset, name)
+        adapter = TrafficAdapter(data_dir=data_path)
     # The load method actually does the extraction, I need to call it!
     train_split, test_split = adapter.load()
     
@@ -107,7 +140,7 @@ def train(args):
     # Latent dim = n_atoms * hidden_dim
     latent_dim = n_atoms * args.hidden_dim
     
-    print(f"[{molecule}] Initializing {args.model} model...")
+    print(f"[{name}] Initializing {args.model} model...")
     if args.model == "koopman":
         model = GraphAwareKoopmanNet(
             edge_index=edge_index,
@@ -115,7 +148,7 @@ def train(args):
             latent_dim=latent_dim, n_atoms=n_atoms
         )
         seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
-        ckpt_name = f"graph_aware_koopman_{molecule}{seed_tag}_best.pt"
+        ckpt_name = f"graph_aware_koopman_{name}{seed_tag}_best.pt"
     elif args.model == "gru":
         model = GraphAwareGRUNet(
             edge_index=edge_index,
@@ -123,17 +156,34 @@ def train(args):
             latent_dim=latent_dim, n_atoms=n_atoms
         )
         seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
-        ckpt_name = f"graph_aware_gru_{molecule}{seed_tag}_best.pt"
+        ckpt_name = f"graph_aware_gru_{name}{seed_tag}_best.pt"
     elif args.model == "flat":
-        flat_latent = 42 * args.hidden_dim if molecule == "stachyose" else latent_dim
+        flat_latent = 42 * args.hidden_dim if name == "stachyose" else latent_dim
         model = FlatKoopmanNet(
             n_atoms=n_atoms,
             input_dim=6,
             latent_dim=flat_latent
         )
         seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
-        ckpt_name = f"flat_koopman_{molecule}{seed_tag}_best.pt"
+        ckpt_name = f"flat_koopman_{name}{seed_tag}_best.pt"
         
+    elif args.model == "e-gkn":
+        model = EquivariantKoopmanNet(
+            edge_index=edge_index,
+            node_dim=6, edge_dim=1, hidden_dim=args.hidden_dim, 
+            latent_dim=latent_dim, n_atoms=n_atoms
+        )
+        seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
+        ckpt_name = f"e_gkn_{name}{seed_tag}_best.pt"
+        
+    elif args.model == "egnn":
+        model = EGNNDynamicsNet(
+            edge_index=edge_index,
+            node_dim=6, edge_dim=1, hidden_dim=args.hidden_dim, 
+            latent_dim=latent_dim, n_atoms=n_atoms
+        )
+        seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
+        ckpt_name = f"egnn_{name}{seed_tag}_best.pt"
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     
     os.makedirs(args.out_dir, exist_ok=True)
@@ -149,22 +199,35 @@ def train(args):
         log_every=10,
     )
     
-    print(f"[{molecule}] Starting training...")
+    print(f"[{name}] Starting training...")
     trainer.fit(train_split, test_split)
-    print(f"[{molecule}] Training complete. Best checkpoint saved to {os.path.join(args.out_dir, ckpt_name)}")
+    print(f"[{name}] Training complete. Best checkpoint saved to {os.path.join(args.out_dir, ckpt_name)}")
 
 def evaluate(args):
     device = get_device()
-    dataset = "md17" if args.md17 else "md22"
-    molecule = args.md17 if args.md17 else args.md22
+    if args.md17:
+        dataset, name = "md17", args.md17
+    elif args.md22:
+        dataset, name = "md22", args.md22
+    elif args.nbody:
+        dataset, name = "nbody", args.nbody
+    elif args.traffic:
+        dataset, name = "traffic", "metr-la"
     
-    print(f"[{molecule}] Initializing {dataset} dataset for evaluation...")
+    print(f"[{name}] Initializing {dataset} dataset for evaluation...")
     
-    data_path = get_data_path(dataset, molecule)
-    if dataset == "md22":
-        adapter = MD22Adapter(path=data_path, molecule=molecule)
-    else:
-        adapter = MD17AdapterV2(path=data_path, molecule=molecule)
+    if dataset in ["md17", "md22"]:
+        data_path = get_data_path(dataset, name)
+        if dataset == "md22":
+            adapter = MD22Adapter(path=data_path, molecule=name)
+        else:
+            adapter = MD17AdapterV2(path=data_path, molecule=name)
+    elif dataset == "nbody":
+        data_path = get_data_path(dataset, name)
+        adapter = NBodyAdapter(data_dir=data_path, system=name)
+    elif dataset == "traffic":
+        data_path = get_data_path(dataset, name)
+        adapter = TrafficAdapter(data_dir=data_path)
     train_split, test_split = adapter.load()
     
     n_atoms = adapter._n_atoms
@@ -172,41 +235,21 @@ def evaluate(args):
     latent_dim = n_atoms * 64
     
     print("Loading models...")
-    koopman_model = GraphAwareKoopmanNet(edge_index=edge_index, node_dim=6, edge_dim=1, hidden_dim=64, latent_dim=latent_dim, n_atoms=n_atoms)
-    gru_model = GraphAwareGRUNet(edge_index=edge_index, node_dim=6, edge_dim=1, hidden_dim=64, latent_dim=latent_dim, n_atoms=n_atoms)
-    
-    k_ckpt = torch.load(args.koopman_ckpt, map_location=device, weights_only=False)
-    koopman_model.load_state_dict(k_ckpt["model_state_dict"])
-    print(f"Loaded Koopman checkpoint from epoch {k_ckpt['epoch']}")
-    
-    g_ckpt = torch.load(args.gru_ckpt, map_location=device, weights_only=False)
-    gru_model.load_state_dict(g_ckpt["model_state_dict"])
-    print(f"Loaded GRU checkpoint from epoch {g_ckpt['epoch']}")
-    
     os.makedirs(args.out_dir, exist_ok=True)
     
-    if args.flat_ckpt and os.path.exists(args.flat_ckpt):
-        print("\nRunning Massive 3-Way Ablation Evaluation...")
-        flat_latent = 42 * 64 if molecule == "stachyose" else latent_dim
-        flat_model = FlatKoopmanNet(n_atoms=n_atoms, input_dim=6, latent_dim=flat_latent)
-        f_ckpt = torch.load(args.flat_ckpt, map_location=device, weights_only=False)
-        flat_model.load_state_dict(f_ckpt["model_state_dict"])
-        print(f"Loaded Flat Koopman checkpoint from epoch {f_ckpt['epoch']}")
+    if args.egkn_ckpt and args.egnn_ckpt:
+        print("\nRunning E-GKN vs EGNN Evaluation Suite...")
+        koopman_model = EquivariantKoopmanNet(edge_index=edge_index, node_dim=6, edge_dim=1, hidden_dim=64, latent_dim=latent_dim, n_atoms=n_atoms)
+        gru_model = EGNNDynamicsNet(edge_index=edge_index, node_dim=6, edge_dim=1, hidden_dim=64, latent_dim=latent_dim, n_atoms=n_atoms)
         
-        evaluator = ThreeWayAblationEvaluator(
-            flat_model=flat_model,
-            graph_koop_model=koopman_model,
-            graph_gru_model=gru_model,
-            device=device,
-            rollout_steps=args.rollout_steps,
-            n_atoms=n_atoms
-        )
-        results = evaluator.run(test_split, steps=args.rollout_steps)
-        evaluator.print_summary(results)
-        evaluator.plot(results, save_path=os.path.join(args.out_dir, f"ablation_{molecule}.png"))
+        k_ckpt = torch.load(args.egkn_ckpt, map_location=device, weights_only=False)
+        koopman_model.load_state_dict(k_ckpt["model_state_dict"])
+        print(f"Loaded E-GKN checkpoint from epoch {k_ckpt['epoch']}")
         
-    else:
-        print("\nRunning 2-Way Evaluation Suite...")
+        g_ckpt = torch.load(args.egnn_ckpt, map_location=device, weights_only=False)
+        gru_model.load_state_dict(g_ckpt["model_state_dict"])
+        print(f"Loaded EGNN checkpoint from epoch {g_ckpt['epoch']}")
+        
         evaluator = GraphAwareKoopmanEvaluator(
             koopman_model=koopman_model,
             baseline_model=gru_model,
@@ -217,11 +260,60 @@ def evaluate(args):
         )
         results = evaluator.run(test_split)
         evaluator.print_summary(results)
-        evaluator.plot(results, save_path=os.path.join(args.out_dir, f"dynamics_tradeoff_{molecule}.png"))
+        evaluator.plot(results, save_path=os.path.join(args.out_dir, f"dynamics_tradeoff_{name}_egkn.png"))
         
-        print("\nRunning Deep Physical Diagnostics (Bonds/Angles/Torsions)...")
-        physics_eval = PhysicsEval(koopman_model, gru_model, test_split, n_atoms, molecule)
-        physics_eval.run(steps=args.rollout_steps, out_dir=args.out_dir)
+    elif args.koopman_ckpt and args.gru_ckpt:
+        koopman_model = GraphAwareKoopmanNet(edge_index=edge_index, node_dim=6, edge_dim=1, hidden_dim=64, latent_dim=latent_dim, n_atoms=n_atoms)
+        gru_model = GraphAwareGRUNet(edge_index=edge_index, node_dim=6, edge_dim=1, hidden_dim=64, latent_dim=latent_dim, n_atoms=n_atoms)
+        
+        k_ckpt = torch.load(args.koopman_ckpt, map_location=device, weights_only=False)
+        koopman_model.load_state_dict(k_ckpt["model_state_dict"])
+        print(f"Loaded Koopman checkpoint from epoch {k_ckpt['epoch']}")
+        
+        g_ckpt = torch.load(args.gru_ckpt, map_location=device, weights_only=False)
+        gru_model.load_state_dict(g_ckpt["model_state_dict"])
+        print(f"Loaded GRU checkpoint from epoch {g_ckpt['epoch']}")
+        
+        if args.flat_ckpt and os.path.exists(args.flat_ckpt):
+            print("\nRunning Massive 3-Way Ablation Evaluation...")
+            flat_latent = 42 * 64 if name == "stachyose" else latent_dim
+            flat_model = FlatKoopmanNet(n_atoms=n_atoms, input_dim=6, latent_dim=flat_latent)
+            f_ckpt = torch.load(args.flat_ckpt, map_location=device, weights_only=False)
+            flat_model.load_state_dict(f_ckpt["model_state_dict"])
+            print(f"Loaded Flat Koopman checkpoint from epoch {f_ckpt['epoch']}")
+            
+            evaluator = ThreeWayAblationEvaluator(
+                flat_model=flat_model,
+                graph_koop_model=koopman_model,
+                graph_gru_model=gru_model,
+                device=device,
+                rollout_steps=args.rollout_steps,
+                n_atoms=n_atoms
+            )
+            results = evaluator.run(test_split, steps=args.rollout_steps)
+            evaluator.print_summary(results)
+            evaluator.plot(results, save_path=os.path.join(args.out_dir, f"ablation_{name}.png"))
+            
+        else:
+            print("\nRunning 2-Way Evaluation Suite...")
+            evaluator = GraphAwareKoopmanEvaluator(
+                koopman_model=koopman_model,
+                baseline_model=gru_model,
+                device=device,
+                rollout_steps=args.rollout_steps,
+                batch_size=64,
+                n_atoms=n_atoms
+            )
+            results = evaluator.run(test_split)
+            evaluator.print_summary(results)
+            evaluator.plot(results, save_path=os.path.join(args.out_dir, f"dynamics_tradeoff_{name}.png"))
+            
+            if dataset in ["md17", "md22"]:
+                print("\nRunning Deep Physical Diagnostics (Bonds/Angles/Torsions)...")
+                physics_eval = PhysicsEval(koopman_model, gru_model, test_split, n_atoms, name)
+                physics_eval.run(steps=args.rollout_steps, out_dir=args.out_dir)
+    else:
+        print("Must provide either (--koopman-ckpt AND --gru-ckpt) OR (--egkn-ckpt AND --egnn-ckpt)")
         
     print(f"Evaluation complete. Plots saved to {args.out_dir}/")
 
