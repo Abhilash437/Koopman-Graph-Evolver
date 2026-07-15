@@ -262,7 +262,7 @@ def evaluate(args):
         evaluator.print_summary(results)
         evaluator.plot(results, save_path=os.path.join(args.out_dir, f"dynamics_tradeoff_{name}_egkn.png"))
         
-    elif args.koopman_ckpt and args.gru_ckpt:
+    if args.koopman_ckpt and args.gru_ckpt:
         koopman_model = GraphAwareKoopmanNet(edge_index=edge_index, node_dim=6, edge_dim=1, hidden_dim=64, latent_dim=latent_dim, n_atoms=n_atoms)
         gru_model = GraphAwareGRUNet(edge_index=edge_index, node_dim=6, edge_dim=1, hidden_dim=64, latent_dim=latent_dim, n_atoms=n_atoms)
         
