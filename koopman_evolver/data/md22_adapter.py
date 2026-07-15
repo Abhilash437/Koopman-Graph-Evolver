@@ -14,9 +14,6 @@ class MD22Adapter(DynamicsDatasetAdapter):
     like Ac-Ala3-NHMe (42 atoms).
     """
 
-    _ATOM_COUNTS = {
-        "ac-ala3-nhme": 42
-    }
 
     def __init__(
         self,
@@ -38,10 +35,7 @@ class MD22Adapter(DynamicsDatasetAdapter):
         self.train_frac = train_frac
         self.bond_cutoff = bond_cutoff
 
-        if self.molecule in self._ATOM_COUNTS:
-            self._n_atoms = self._ATOM_COUNTS[self.molecule]
-        else:
-            self._n_atoms = None
+        self._n_atoms = None
 
     @property
     def name(self) -> str:
