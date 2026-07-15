@@ -1223,9 +1223,9 @@ class ThreeWayAblationEvaluator:
 
         print(f"\n{'LATENT ENERGY RATIO @ step {S+1}':^80}")
         print(thin)
-        print(f"  Flat Koopman  : {results.flat_energy_ratio[S]:.4f}")
-        print(f"  Graph Koopman : {results.graph_koop_energy_ratio[S]:.4f}")
-        print(f"  Graph GRU     : {results.graph_gru_energy_ratio[S]:.4f}")
+        print(f"  Flat Koopman  : {float(results.flat_energy_ratio[S]):.4f}")
+        print(f"  Graph Koopman : {float(results.graph_koop_energy_ratio[S]):.4f}")
+        print(f"  Graph GRU     : {float(results.graph_gru_energy_ratio[S]):.4f}")
 
         # Winner analysis
         print(f"\n{'WINNER ANALYSIS':^80}")
@@ -1236,9 +1236,9 @@ class ThreeWayAblationEvaluator:
             'Angle Drift': (results.flat_angle_drift[S], results.graph_koop_angle_drift[S], results.graph_gru_angle_drift[S]),
             'Torsion Drift': (results.flat_torsion_drift[S], results.graph_koop_torsion_drift[S], results.graph_gru_torsion_drift[S]),
             'Energy Stability': (
-                abs(results.flat_energy_ratio[S] - 1.0),
-                abs(results.graph_koop_energy_ratio[S] - 1.0),
-                abs(results.graph_gru_energy_ratio[S] - 1.0),
+                float(abs(results.flat_energy_ratio[S] - 1.0)),
+                float(abs(results.graph_koop_energy_ratio[S] - 1.0)),
+                float(abs(results.graph_gru_energy_ratio[S] - 1.0)),
             ),
         }
         names = ['Flat Koopman', 'Graph Koopman', 'Graph GRU']
