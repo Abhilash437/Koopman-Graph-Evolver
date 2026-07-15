@@ -71,8 +71,8 @@ class NBodyAdapter(DynamicsDatasetAdapter):
         edges = np.load(edges_path)
 
         # Transpose to (num_samples, timesteps, num_atoms, dims)
-        loc = np.transpose(loc, [0, 3, 1, 2])
-        vel = np.transpose(vel, [0, 3, 1, 2])
+        loc = np.transpose(loc, [0, 1, 3, 2])
+        vel = np.transpose(vel, [0, 1, 3, 2])
 
         # Subsample time if requested
         loc = loc[:, ::self.sub_sampling, :, :]

@@ -257,7 +257,20 @@ class GraphAwareTrainer:
     @torch.no_grad()
     def _compute_val_r2(self, node_feats, edge_idx, edge_feats, val_lengths):
         self.model.eval()
-        h_seq = self.model(node_feats, edge_idx, edge_feats, val_lengths)
+        
+        all_h_seq = []
+        B_total = node_feats.shape[0]
+        batch_size = self.batch_size
+        
+        for i in range(0, B_total, batch_size):
+            end_idx = min(i + batch_size, B_total)
+            batch_nodes = node_feats[i:end_idx]
+            batch_edges = edge_feats[i:end_idx]
+            batch_lens = val_lengths[i:end_idx]
+            h_seq_b = self.model(batch_nodes, edge_idx, batch_edges, batch_lens)
+            all_h_seq.append(h_seq_b)
+            
+        h_seq = torch.cat(all_h_seq, dim=0)
         B, T, n_atoms, hidden_dim = h_seq.shape
         # Reject checkpoints if validation latent space collapsed
         all_ratios = []
@@ -280,7 +293,16 @@ class GraphAwareTrainer:
             h_tgt_list.append(h_seq[b, 1:L])
         h_t   = torch.cat(h_t_list,   dim=0)
         h_tgt = torch.cat(h_tgt_list, dim=0)
-        h_pred = self.model.transition_step(h_t)
+        
+        h_pred_list = []
+        # Use a larger batch size here since it's just the transition step, not the full graph conv
+        step_batch = self.batch_size * 4 
+        for i in range(0, h_t.shape[0], step_batch):
+            end_idx = min(i + step_batch, h_t.shape[0])
+            h_pred_list.append(self.model.transition_step(h_t[i:end_idx]))
+            
+        h_pred = torch.cat(h_pred_list, dim=0)
+        
         y_true = h_tgt.cpu().numpy()
         y_pred = h_pred.cpu().numpy()
         r2 = r2_score(y_true.ravel(), y_pred.ravel())

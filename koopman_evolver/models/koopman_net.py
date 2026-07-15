@@ -1,4 +1,4 @@
-from .blocks import GraphEncoder, GraphDecoder
+from .blocks import GraphEncoder, GraphDecoder, EquivariantGraphEncoder, EquivariantGraphDecoder, DummyDecoder
 from torch_geometric.utils import to_dense_batch
 import torch
 import torch.nn as nn
@@ -186,4 +186,120 @@ class GraphAwareKoopmanNet(nn.Module):
     def post_step_hook(self):
         pass
 
+class EquivariantKoopmanNet(nn.Module):
+    def __init__(self, edge_index, node_dim=6, edge_dim=1, hidden_dim=64, latent_dim=576, n_atoms=9):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.n_atoms = n_atoms
+        self.encoder = EquivariantGraphEncoder(node_dim=node_dim, hidden_dim=hidden_dim)
+        self.decoder = DummyDecoder(n_atoms=n_atoms, hidden_dim=hidden_dim)
+        self.eq_updater = EquivariantGraphDecoder(hidden_dim=hidden_dim)
+
+        self.A_self = nn.Parameter(torch.zeros(hidden_dim - 3, hidden_dim - 3))
+        self.A_edge = nn.Parameter(torch.zeros(hidden_dim - 3, hidden_dim - 3))
+        self.alpha = nn.Parameter(torch.tensor(0.1))
+
+        self.register_buffer("edge_index", edge_index.clone())
+        P = torch.zeros(n_atoms, n_atoms)
+        P[edge_index[1], edge_index[0]] = 1.0
+        row_sums = P.sum(dim=1, keepdim=True)
+        row_sums = torch.where(row_sums == 0, torch.ones_like(row_sums), row_sums)
+        P = P / row_sums
+        self.register_buffer("P", P)
+
+    @property
+    def K_global(self):
+        A_self_skew = self.A_self - self.A_self.T
+        A_edge_skew = self.A_edge - self.A_edge.T
+        I_N = torch.eye(self.n_atoms, device=self.A_self.device)
+        P_sym = 0.5 * (self.P + self.P.T)
+        term_self = torch.kron(I_N, A_self_skew)
+        term_edge = torch.kron(P_sym, A_edge_skew)
+        A_glob = term_self + self.alpha * term_edge
+        return torch.matrix_exp(A_glob)
+
+    def forward(self, node_features, edge_index, edge_features, lengths):
+        return self.encoder(node_features, edge_index)
+
+    def transition_step(self, z, K_glob=None):
+        if z.dim() == 2:
+            z = z.unsqueeze(0)
+            is_2d = True
+        else:
+            is_2d = False
+
+        B_steps, n_atoms, hidden_dim = z.shape
+        x_t = z[:, :, :3]
+        h_t = z[:, :, 3:]
+
+        h_flat = h_t.reshape(B_steps, n_atoms * (hidden_dim - 3))
+        if K_glob is None: K_glob = self.K_global
+
+        h_pred_flat = torch.matmul(h_flat, K_glob.t())
+        h_pred = h_pred_flat.reshape(B_steps, n_atoms, hidden_dim - 3)
+
+        x_pred = self.eq_updater(h_pred, x_t, self.edge_index)
+
+        z_pred = torch.cat([x_pred, h_pred], dim=-1)
+        if is_2d: z_pred = z_pred.squeeze(0)
+        return z_pred
+
+    def forward_rollout(self, z0, steps=100, latent_seed=True):
+        if latent_seed:
+            z = z0[:, 0]
+        else:
+            raise NotImplementedError()
+        rollout = [z]
+        for _ in range(1, steps):
+            z = self.transition_step(z)
+            rollout.append(z)
+        return torch.stack(rollout, dim=1)
+
+    def compute_loss(self, outputs, targets, lengths, epoch, node_features=None):
+        z_seq = outputs
+        B, T, n_atoms, hidden_dim = z_seq.shape
+
+        z_t_list, z_tgt_list = [], []
+        for b, L in enumerate(lengths):
+            if L < 2: continue
+            z_t_list.append(z_seq[b, :L-1])
+            z_tgt_list.append(z_seq[b, 1:L])
+
+        z_t = torch.cat(z_t_list, dim=0)
+        z_tgt = torch.cat(z_tgt_list, dim=0)
+
+        z_pred = self.transition_step(z_t)
+        l_dyn = F.mse_loss(z_pred, z_tgt)
+
+        step_diff = torch.norm(z_tgt - z_t, dim=-1)
+        step_norm = torch.norm(z_t, dim=-1) + 1e-8
+        relative_change = (step_diff / step_norm).mean()
+        l_collapse = torch.relu(0.05 - relative_change)
+
+        if node_features is not None:
+            coords_true = node_features[:, :, :, :3]
+            z_flat = z_seq.reshape(B, T, n_atoms * hidden_dim)
+            coords_pred = self.decoder(z_flat)
+            l_recon = F.mse_loss(coords_pred, coords_true)
+
+            src_idx, dst_idx = self.edge_index[0], self.edge_index[1]
+            d_true = torch.norm(coords_true[:, :, src_idx] - coords_true[:, :, dst_idx], dim=-1)
+            d_pred = torch.norm(coords_pred[:, :, src_idx] - coords_pred[:, :, dst_idx], dim=-1)
+            l_iso = F.mse_loss(d_pred, d_true)
+        else:
+            l_recon = 0.0
+            l_iso = 0.0
+
+        total_loss = l_dyn + 2.0 * l_collapse + 10.0 * l_recon + 5.0 * l_iso
+        return total_loss, {
+            'loss': total_loss.item(),
+            'l_dyn': l_dyn.item(),
+            'l_collapse': l_collapse.item(),
+            'l_recon': l_recon.item() if node_features is not None else 0.0,
+            'l_iso': l_iso.item() if node_features is not None else 0.0,
+            'alpha': float(self.alpha.item())
+        }
+
+    def post_step_hook(self):
+        pass
 
