@@ -1088,8 +1088,8 @@ class ThreeWayAblationEvaluator:
                 h_seq = model(node_feats)
                 h0 = h_seq[:, :1, :]
                 rollout = model.forward_rollout(h0, steps=steps + 1, latent_seed=True)
-                # rollout: (B, steps+1, latent_dim)
-                energy = torch.norm(rollout, dim=-1) ** 2  # (B, steps+1)
+                # rollout is actually (B, steps+1, n_atoms, h_dim)
+                energy = torch.mean(torch.norm(rollout, dim=-1) ** 2, dim=-1)  # (B, steps+1)
             else:
                 h_seq = model(node_feats, edge_idx, edge_feats, lengths)
                 h0 = h_seq[:, :1, :, :]
