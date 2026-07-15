@@ -23,11 +23,11 @@ for mol in ethanol aspirin; do
     echo "--- Training MD17: $mol ---"
     for model in koopman gru flat e-gkn egnn; do
         echo "Running Model: $model"
-        python -u -m koopman_evolver.cli train --md17 $mol --model $model --epochs $EPOCHS --batch-size $BATCH_SIZE
+        python3 -u -m koopman_evolver.cli train --md17 $mol --model $model --epochs $EPOCHS --batch-size $BATCH_SIZE
     done
     
     echo "--- Evaluating MD17: $mol ---"
-    python -u -m koopman_evolver.cli eval --md17 $mol \
+    python3 -u -m koopman_evolver.cli eval --md17 $mol \
         --koopman-ckpt ./checkpoints/graph_aware_koopman_${mol}_best.pt \
         --gru-ckpt ./checkpoints/graph_aware_gru_${mol}_best.pt \
         --flat-ckpt ./checkpoints/flat_koopman_${mol}_best.pt \
@@ -42,11 +42,11 @@ for mol in stachyose; do
     echo "--- Training MD22: $mol ---"
     for model in koopman gru flat e-gkn egnn; do
         echo "Running Model: $model"
-        python -u -m koopman_evolver.cli train --md22 $mol --model $model --epochs $EPOCHS --batch-size $MD22_BATCH
+        python3 -u -m koopman_evolver.cli train --md22 $mol --model $model --epochs $EPOCHS --batch-size $MD22_BATCH
     done
     
     echo "--- Evaluating MD22: $mol ---"
-    python -u -m koopman_evolver.cli eval --md22 $mol \
+    python3 -u -m koopman_evolver.cli eval --md22 $mol \
         --koopman-ckpt ./checkpoints/graph_aware_koopman_${mol}_best.pt \
         --gru-ckpt ./checkpoints/graph_aware_gru_${mol}_best.pt \
         --flat-ckpt ./checkpoints/flat_koopman_${mol}_best.pt \
@@ -58,11 +58,11 @@ done
 echo "--- Training N-Body: Charged ---"
 for model in e-gkn egnn koopman gru flat; do
     echo "Running Model: $model"
-    python -u -m koopman_evolver.cli train --nbody charged --model $model --epochs $EPOCHS --batch-size $BATCH_SIZE
+    python3 -u -m koopman_evolver.cli train --nbody charged --model $model --epochs $EPOCHS --batch-size $BATCH_SIZE
 done
 
 echo "--- Evaluating N-Body: Charged ---"
-python -u -m koopman_evolver.cli eval --nbody charged \
+python3 -u -m koopman_evolver.cli eval --nbody charged \
     --koopman-ckpt ./checkpoints/graph_aware_koopman_charged_best.pt \
     --gru-ckpt ./checkpoints/graph_aware_gru_charged_best.pt \
     --flat-ckpt ./checkpoints/flat_koopman_charged_best.pt \
@@ -75,11 +75,11 @@ TRAFFIC_EPOCHS=50
 echo "--- Training Traffic: METR-LA ---"
 for model in gru koopman flat; do
     echo "Running Model: $model"
-    python -u -m koopman_evolver.cli train --traffic --model $model --epochs $TRAFFIC_EPOCHS --batch-size $BATCH_SIZE
+    python3 -u -m koopman_evolver.cli train --traffic --model $model --epochs $TRAFFIC_EPOCHS --batch-size $BATCH_SIZE
 done
 
 echo "--- Evaluating Traffic: METR-LA ---"
-python -u -m koopman_evolver.cli eval --traffic \
+python3 -u -m koopman_evolver.cli eval --traffic \
     --koopman-ckpt ./checkpoints/graph_aware_koopman_metr-la_best.pt \
     --gru-ckpt ./checkpoints/graph_aware_gru_metr-la_best.pt \
     --flat-ckpt ./checkpoints/flat_koopman_metr-la_best.pt
