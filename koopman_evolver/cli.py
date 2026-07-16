@@ -158,11 +158,10 @@ def train(args):
         seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
         ckpt_name = f"graph_aware_gru_{name}{seed_tag}_best.pt"
     elif args.model == "flat":
-        flat_latent = 42 * args.hidden_dim if name == "stachyose" else latent_dim
         model = FlatKoopmanNet(
             n_atoms=n_atoms,
             input_dim=6,
-            latent_dim=flat_latent
+            latent_dim=latent_dim
         )
         seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
         ckpt_name = f"flat_koopman_{name}{seed_tag}_best.pt"
@@ -276,8 +275,7 @@ def evaluate(args):
         
         if args.flat_ckpt and os.path.exists(args.flat_ckpt):
             print("\nRunning Massive 3-Way Ablation Evaluation...")
-            flat_latent = 42 * 64 if name == "stachyose" else latent_dim
-            flat_model = FlatKoopmanNet(n_atoms=n_atoms, input_dim=6, latent_dim=flat_latent)
+            flat_model = FlatKoopmanNet(n_atoms=n_atoms, input_dim=6, latent_dim=latent_dim)
             f_ckpt = torch.load(args.flat_ckpt, map_location=device, weights_only=False)
             flat_model.load_state_dict(f_ckpt["model_state_dict"])
             print(f"Loaded Flat Koopman checkpoint from epoch {f_ckpt['epoch']}")
