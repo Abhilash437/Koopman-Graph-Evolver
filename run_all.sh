@@ -18,8 +18,8 @@ echo "====================================================="
 echo " Starting Koopman Graph Evolver Massive Sweep"
 echo "====================================================="
 
-# 1. MD17 - Small Molecules (Ethanol, Aspirin)
-for mol in ethanol aspirin; do
+# 1. MD17 - Small Molecules
+for mol in aspirin benzene ethanol malonaldehyde naphthalene salicylic toluene uracil; do
     echo "--- Training MD17: $mol ---"
     for model in koopman gru flat e-gkn egnn; do
         echo "Running Model: $model"
@@ -35,10 +35,10 @@ for mol in ethanol aspirin; do
         --egnn-ckpt ./checkpoints/egnn_${mol}_best.pt
 done
 
-# 2. MD22 - Large Macromolecules (Stachyose)
-# We lower the batch size to 16 for Stachyose (87 atoms) to prevent VRAM spikes
+# 2. MD22 - Large Macromolecules
+# We lower the batch size to 16 for MD22 to prevent VRAM spikes
 MD22_BATCH=16
-for mol in stachyose; do
+for mol in stachyose ac-ala3-nhme dha at-at; do
     echo "--- Training MD22: $mol ---"
     for model in koopman gru flat e-gkn egnn; do
         echo "Running Model: $model"
@@ -54,20 +54,23 @@ for mol in stachyose; do
         --egnn-ckpt ./checkpoints/egnn_${mol}_best.pt
 done
 
-# 3. N-Body Physics (Charged)
-echo "--- Training N-Body: Charged ---"
-for model in e-gkn egnn koopman gru flat; do
-    echo "Running Model: $model"
-    python3 -u -m koopman_evolver.cli train --nbody charged --model $model --epochs $EPOCHS --batch-size $BATCH_SIZE
-done
+# 3. N-Body Physics
+echo "--- Training N-Body Systems ---"
+for mol in charged springs; do
+    echo "--- Training N-Body: $mol ---"
+    for model in e-gkn egnn koopman gru flat; do
+        echo "Running Model: $model"
+        python3 -u -m koopman_evolver.cli train --nbody $mol --model $model --epochs $EPOCHS --batch-size $BATCH_SIZE
+    done
 
-echo "--- Evaluating N-Body: Charged ---"
-python3 -u -m koopman_evolver.cli eval --nbody charged \
-    --koopman-ckpt ./checkpoints/graph_aware_koopman_charged_best.pt \
-    --gru-ckpt ./checkpoints/graph_aware_gru_charged_best.pt \
-    --flat-ckpt ./checkpoints/flat_koopman_charged_best.pt \
-    --egkn-ckpt ./checkpoints/e_gkn_charged_best.pt \
-    --egnn-ckpt ./checkpoints/egnn_charged_best.pt
+    echo "--- Evaluating N-Body: $mol ---"
+    python3 -u -m koopman_evolver.cli eval --nbody $mol \
+        --koopman-ckpt ./checkpoints/graph_aware_koopman_${mol}_best.pt \
+        --gru-ckpt ./checkpoints/graph_aware_gru_${mol}_best.pt \
+        --flat-ckpt ./checkpoints/flat_koopman_${mol}_best.pt \
+        --egkn-ckpt ./checkpoints/e_gkn_${mol}_best.pt \
+        --egnn-ckpt ./checkpoints/egnn_${mol}_best.pt
+done
 
 # 4. METR-LA Macro-Traffic 
 # We reduce the epochs to 50 for Traffic as 100 epochs on a 207-node graph takes a very long time
