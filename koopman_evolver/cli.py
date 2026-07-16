@@ -255,7 +255,9 @@ def evaluate(args):
             device=device,
             rollout_steps=args.rollout_steps,
             batch_size=64,
-            n_atoms=n_atoms
+            n_atoms=n_atoms,
+            koopman_label="E-GKN (Equivariant Koopman)",
+            baseline_label="EGNN Baseline"
         )
         results = evaluator.run(test_split)
         evaluator.print_summary(results)
@@ -273,6 +275,24 @@ def evaluate(args):
         gru_model.load_state_dict(g_ckpt["model_state_dict"])
         print(f"Loaded GRU checkpoint from epoch {g_ckpt['epoch']}")
         
+        print("\nRunning 2-Way Evaluation Suite...")
+        evaluator = GraphAwareKoopmanEvaluator(
+            koopman_model=koopman_model,
+            baseline_model=gru_model,
+            device=device,
+            rollout_steps=args.rollout_steps,
+            batch_size=64,
+            n_atoms=n_atoms
+        )
+        results = evaluator.run(test_split)
+        evaluator.print_summary(results)
+        evaluator.plot(results, save_path=os.path.join(args.out_dir, f"dynamics_tradeoff_{name}.png"))
+        
+        if dataset in ["md17", "md22"]:
+            print("\nRunning Deep Physical Diagnostics (Bonds/Angles/Torsions)...")
+            physics_eval = PhysicsEval(koopman_model, gru_model, test_split, n_atoms, name)
+            physics_eval.run(steps=args.rollout_steps, out_dir=args.out_dir)
+
         if args.flat_ckpt and os.path.exists(args.flat_ckpt):
             print("\nRunning Massive 3-Way Ablation Evaluation...")
             flat_model = FlatKoopmanNet(n_atoms=n_atoms, input_dim=6, latent_dim=latent_dim)
@@ -280,7 +300,7 @@ def evaluate(args):
             flat_model.load_state_dict(f_ckpt["model_state_dict"])
             print(f"Loaded Flat Koopman checkpoint from epoch {f_ckpt['epoch']}")
             
-            evaluator = ThreeWayAblationEvaluator(
+            ablation_evaluator = ThreeWayAblationEvaluator(
                 flat_model=flat_model,
                 graph_koop_model=koopman_model,
                 graph_gru_model=gru_model,
@@ -288,28 +308,9 @@ def evaluate(args):
                 rollout_steps=args.rollout_steps,
                 n_atoms=n_atoms
             )
-            results = evaluator.run(test_split, steps=args.rollout_steps)
-            evaluator.print_summary(results)
-            evaluator.plot(results, save_path=os.path.join(args.out_dir, f"ablation_{name}.png"))
-            
-        else:
-            print("\nRunning 2-Way Evaluation Suite...")
-            evaluator = GraphAwareKoopmanEvaluator(
-                koopman_model=koopman_model,
-                baseline_model=gru_model,
-                device=device,
-                rollout_steps=args.rollout_steps,
-                batch_size=64,
-                n_atoms=n_atoms
-            )
-            results = evaluator.run(test_split)
-            evaluator.print_summary(results)
-            evaluator.plot(results, save_path=os.path.join(args.out_dir, f"dynamics_tradeoff_{name}.png"))
-            
-            if dataset in ["md17", "md22"]:
-                print("\nRunning Deep Physical Diagnostics (Bonds/Angles/Torsions)...")
-                physics_eval = PhysicsEval(koopman_model, gru_model, test_split, n_atoms, name)
-                physics_eval.run(steps=args.rollout_steps, out_dir=args.out_dir)
+            ablation_results = ablation_evaluator.run(test_split, steps=args.rollout_steps)
+            ablation_evaluator.print_summary(ablation_results)
+            ablation_evaluator.plot(ablation_results, save_path=os.path.join(args.out_dir, f"ablation_{name}.png"))
     else:
         print("Must provide either (--koopman-ckpt AND --gru-ckpt) OR (--egkn-ckpt AND --egnn-ckpt)")
         

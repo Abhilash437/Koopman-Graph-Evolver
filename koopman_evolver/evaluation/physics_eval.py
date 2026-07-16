@@ -390,7 +390,9 @@ class GraphAwareKoopmanEvaluator:
         rollout_steps  : int = 29,
         batch_size     : int = 64,
         n_atoms        : int = 9,
-        hidden_dim     : int = 64
+        hidden_dim     : int = 64,
+        koopman_label  : str = "Koopman (Graph-Aware)",
+        baseline_label : str = "GRU Baseline"
     ):
         self.koopman_model  = koopman_model.to(device).eval()
         self.baseline_model = baseline_model.to(device).eval()
@@ -399,6 +401,8 @@ class GraphAwareKoopmanEvaluator:
         self.batch_size     = batch_size
         self.n_atoms        = n_atoms
         self.hidden_dim     = hidden_dim
+        self.koopman_label  = koopman_label
+        self.baseline_label = baseline_label
 
     def run(self, split: GraphDatasetSplit) -> GraphAwareEvalResults:
         node_feats = torch.tensor(split.node_features, dtype=torch.float32, device=self.device)
@@ -480,14 +484,14 @@ class GraphAwareKoopmanEvaluator:
                 h = z_init
                 for _ in range(s):
                     h = model.transition_step(h)
-                
+
                 B_steps, n_atoms, h_dim = h.shape
                 h_flat = h.reshape(B_steps, n_atoms * h_dim)
                 z_target_flat = z_target.reshape(B_steps, n_atoms * h_dim)
-                
+
                 coords_pred = model.decoder(h_flat)
                 coords_target = model.decoder(z_target_flat)
-                
+
                 errors.append(F.mse_loss(coords_pred, coords_target).item())
             mse_per_step_mean[s - 1] = np.mean(errors) if errors else 0.0
             mse_per_step_std[s - 1]  = np.std(errors)  if errors else 0.0
@@ -660,9 +664,9 @@ class GraphAwareKoopmanEvaluator:
 
         # 1. MSE
         ax1 = fig.add_subplot(gs[0])
-        ax1.plot(steps_err, results.koopman_mse_mean, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=4, label='Koopman (Graph-Aware)')
+        ax1.plot(steps_err, results.koopman_mse_mean, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=4, label=self.koopman_label)
         ax1.fill_between(steps_err, results.koopman_mse_mean - results.koopman_mse_std, results.koopman_mse_mean + results.koopman_mse_std, color=KOOP_COLOR, alpha=0.15)
-        ax1.plot(steps_err, results.baseline_mse_mean, color=BASE_COLOR, linewidth=2.5, linestyle='--', marker='x', markersize=5, label='GRU Baseline')
+        ax1.plot(steps_err, results.baseline_mse_mean, color=BASE_COLOR, linewidth=2.5, linestyle='--', marker='x', markersize=5, label=self.baseline_label)
         ax1.fill_between(steps_err, results.baseline_mse_mean - results.baseline_mse_std, results.baseline_mse_mean + results.baseline_mse_std, color=BASE_COLOR, alpha=0.15)
         ax1.set_ylabel("Rollout MSE", fontsize=12)
         ax1.set_title(f"Predictive Accuracy vs. Geometric Stability — {dataset_label}", fontsize=13, fontweight='bold', pad=10)
@@ -682,9 +686,9 @@ class GraphAwareKoopmanEvaluator:
 
         # 3. Node Embedding Geometry Retention
         ax3 = fig.add_subplot(gs[2], sharex=ax1)
-        ax3.plot(steps_geom, koop_node_norm, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=4, label='Koopman (Graph-Aware)')
+        ax3.plot(steps_geom, koop_node_norm, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=4, label=self.koopman_label)
         ax3.fill_between(steps_geom, koop_node_norm - koop_nstd_norm, koop_node_norm + koop_nstd_norm, color=KOOP_COLOR, alpha=0.15)
-        ax3.plot(steps_geom, base_node_norm, color=BASE_COLOR, linewidth=2.5, linestyle='--', marker='x', markersize=5, label='GRU Baseline')
+        ax3.plot(steps_geom, base_node_norm, color=BASE_COLOR, linewidth=2.5, linestyle='--', marker='x', markersize=5, label=self.baseline_label)
         ax3.fill_between(steps_geom, base_node_norm - base_nstd_norm, base_node_norm + base_nstd_norm, color=BASE_COLOR, alpha=0.15)
         ax3.axhline(1.0, color='gray', linewidth=1.0, linestyle=':', alpha=0.7)
         ax3.set_ylabel("Node Embedding Distance Ratio\n(normalized to t=0)", fontsize=12)
@@ -693,9 +697,9 @@ class GraphAwareKoopmanEvaluator:
 
         # 4. Graph Energy Retention
         ax4 = fig.add_subplot(gs[3], sharex=ax1)
-        ax4.plot(steps_geom, results.koopman_energy_mean, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=4, label='Koopman (Graph-Aware)')
+        ax4.plot(steps_geom, results.koopman_energy_mean, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=4, label=self.koopman_label)
         ax4.fill_between(steps_geom, results.koopman_energy_mean - results.koopman_energy_std, results.koopman_energy_mean + results.koopman_energy_std, color=KOOP_COLOR, alpha=0.15)
-        ax4.plot(steps_geom, results.baseline_energy_mean, color=BASE_COLOR, linewidth=2.5, linestyle='--', marker='x', markersize=5, label='GRU Baseline')
+        ax4.plot(steps_geom, results.baseline_energy_mean, color=BASE_COLOR, linewidth=2.5, linestyle='--', marker='x', markersize=5, label=self.baseline_label)
         ax4.fill_between(steps_geom, results.baseline_energy_mean - results.baseline_energy_std, results.baseline_energy_mean + results.baseline_energy_std, color=BASE_COLOR, alpha=0.15)
         ax4.axhline(1.0, color='gray', linewidth=1.0, linestyle=':', alpha=0.7)
         ax4.set_xlabel("Prediction Horizon (steps)", fontsize=12)
