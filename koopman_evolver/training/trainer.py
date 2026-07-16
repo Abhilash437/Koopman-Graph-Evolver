@@ -135,7 +135,7 @@ class GraphTrainer:
             all_ratios.extend(ratios)
 
         mean_relative_change = np.mean(all_ratios) if all_ratios else 0.0
-        if mean_relative_change < 0.05:
+        if mean_relative_change < 1e-4:
             return -1.0
         h_t_list, h_tgt_list = [], []
         for b, L in enumerate(val_lengths):
@@ -284,7 +284,7 @@ class GraphAwareTrainer:
             all_ratios.extend(ratios)
 
         mean_relative_change = np.mean(all_ratios) if all_ratios else 0.0
-        if mean_relative_change < 0.05:
+        if mean_relative_change < 1e-4:
             return -1.0
         h_t_list, h_tgt_list = [], []
         for b, L in enumerate(val_lengths):
