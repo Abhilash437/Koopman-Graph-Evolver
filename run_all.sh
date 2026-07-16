@@ -72,20 +72,6 @@ for mol in charged springs; do
         --egnn-ckpt ./checkpoints/egnn_${mol}_best.pt
 done
 
-# 4. METR-LA Macro-Traffic 
-# We reduce the epochs to 50 for Traffic as 100 epochs on a 207-node graph takes a very long time
-TRAFFIC_EPOCHS=50
-echo "--- Training Traffic: METR-LA ---"
-for model in gru koopman flat; do
-    echo "Running Model: $model"
-    python3 -u -m koopman_evolver.cli train --traffic --model $model --epochs $TRAFFIC_EPOCHS --batch-size $BATCH_SIZE
-done
-
-echo "--- Evaluating Traffic: METR-LA ---"
-python3 -u -m koopman_evolver.cli eval --traffic \
-    --koopman-ckpt ./checkpoints/graph_aware_koopman_metr-la_best.pt \
-    --gru-ckpt ./checkpoints/graph_aware_gru_metr-la_best.pt \
-    --flat-ckpt ./checkpoints/flat_koopman_metr-la_best.pt
 
 echo "====================================================="
 echo " ALL TRAINING AND EVALUATIONS COMPLETED SUCCESSFULLY!"
