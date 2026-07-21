@@ -867,13 +867,13 @@ class SEGNODynamicsNet(nn.Module):
 
         self.model = SEGNO(
             in_node_nf=node_dim,
-            in_edge_nf=0, # passing 0 since we don't pass edge_attr
+            in_edge_nf=edge_dim, # pass bond distances as edge_attr to match E-GKN
             hidden_nf=hidden_dim,
             device='cpu',
             n_layers=3,
             coords_weight=1.0,
             recurrent=False,
-            norm_diff=False,
+            norm_diff=True, # crucial stabilization for unrolled ODE trajectories
             tanh=False
         )
 
@@ -905,7 +905,12 @@ class SEGNODynamicsNet(nn.Module):
         batch_offsets = torch.arange(B_steps, device=z.device).repeat_interleave(E) * n_atoms
         edge_idx_batched = self.edge_index.repeat(1, B_steps) + batch_offsets
 
-        x_next_flat = self.model(his_flat, x_flat, edge_idx_batched, v_flat, edge_attr=None)
+        # Compute dynamic bond distances as edge_attr
+        src, dst = self.edge_index[0], self.edge_index[1]
+        distances = torch.norm(x_t[:, src] - x_t[:, dst], dim=-1, keepdim=True) # [B_steps, E, 1]
+        edge_attr_batched = distances.reshape(-1, 1)
+
+        x_next_flat = self.model(his_flat, x_flat, edge_idx_batched, v_flat, edge_attr=edge_attr_batched)
 
         x_next = x_next_flat.reshape(B_steps, n_atoms, 3)
         v_next = x_next - x_t  # Approximate next velocity
