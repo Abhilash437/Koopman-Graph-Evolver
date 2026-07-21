@@ -910,10 +910,17 @@ class SEGNODynamicsNet(nn.Module):
         distances = torch.norm(x_t[:, src] - x_t[:, dst], dim=-1, keepdim=True) # [B_steps, E, 1]
         edge_attr_batched = distances.reshape(-1, 1)
 
-        x_next_flat = self.model(his_flat, x_flat, edge_idx_batched, v_flat, edge_attr=edge_attr_batched)
+        # Extract both x and v from SEGNO's internal layers instead of discarding v
+        h = self.model.embedding(his_flat)
+        x_next_flat = x_flat
+        v_next_flat = v_flat
+        for i in range(self.model.n_layers):
+            h, x_next_flat, v_next_flat, _ = self.model.module(
+                h, edge_idx_batched, x_next_flat, v_next_flat, v_next_flat, edge_attr=edge_attr_batched
+            )
 
         x_next = x_next_flat.reshape(B_steps, n_atoms, 3)
-        v_next = x_next - x_t  # Approximate next velocity
+        v_next = v_next_flat.reshape(B_steps, n_atoms, 3) # Correct internal velocity state
 
         z_next = torch.cat([x_next, v_next], dim=-1)
         if is_2d: z_next = z_next.squeeze(0)
