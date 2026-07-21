@@ -65,6 +65,7 @@ def build_parser():
     eval_parser.add_argument("--flat-ckpt", type=str, default=None, help="Path to Flat Koopman checkpoint for 3-way ablation")
     eval_parser.add_argument("--egkn-ckpt", type=str, default=None, help="Path to E-GKN model checkpoint")
     eval_parser.add_argument("--egnn-ckpt", type=str, default=None, help="Path to EGNN baseline checkpoint")
+    eval_parser.add_argument("--segno-ckpt", type=str, default=None, help="Path to SEGNO baseline checkpoint")
     eval_parser.add_argument("--rollout-steps", type=int, default=29, help="Number of steps for rollout evaluation")
     eval_parser.add_argument("--out-dir", type=str, default="./results", help="Output directory for plots")
     
@@ -272,7 +273,38 @@ def evaluate(args):
         evaluator.print_summary(results)
         evaluator.plot(results, save_path=os.path.join(args.out_dir, f"dynamics_tradeoff_{name}_egkn.png"))
         
-    if args.koopman_ckpt and args.gru_ckpt:
+    elif args.egkn_ckpt and args.segno_ckpt:
+        koopman_model = EquivariantKoopmanNet(edge_index=edge_index, node_dim=6, edge_dim=1, hidden_dim=64, latent_dim=latent_dim, n_atoms=n_atoms)
+        segno_model = SEGNODynamicsNet(edge_index=edge_index, node_dim=6, edge_dim=1, hidden_dim=64, latent_dim=latent_dim, n_atoms=n_atoms)
+        
+        k_ckpt = torch.load(args.egkn_ckpt, map_location=device, weights_only=False)
+        koopman_model.load_state_dict(k_ckpt["model_state_dict"])
+        print(f"Loaded E-GKN checkpoint from epoch {k_ckpt['epoch']}")
+        
+        s_ckpt = torch.load(args.segno_ckpt, map_location=device, weights_only=False)
+        segno_model.load_state_dict(s_ckpt["model_state_dict"])
+        print(f"Loaded SEGNO checkpoint from epoch {s_ckpt['epoch']}")
+        
+        evaluator = GraphAwareKoopmanEvaluator(
+            koopman_model=koopman_model,
+            baseline_model=segno_model,
+            device=device,
+            rollout_steps=args.rollout_steps,
+            batch_size=64,
+            n_atoms=n_atoms,
+            koopman_label="E-GKN (Equivariant Koopman)",
+            baseline_label="SEGNO Baseline"
+        )
+        results = evaluator.run(test_split)
+        evaluator.print_summary(results)
+        evaluator.plot(results, save_path=os.path.join(args.out_dir, f"dynamics_tradeoff_{name}_egkn_vs_segno.png"))
+        
+        if dataset in ["md17", "md22"]:
+            print("\nRunning Deep Physical Diagnostics (Bonds/Angles/Torsions)...")
+            physics_eval = PhysicsEval(koopman_model, segno_model, test_split, n_atoms, name)
+            physics_eval.run(steps=args.rollout_steps, out_dir=args.out_dir)
+
+    elif args.koopman_ckpt and args.gru_ckpt:
         koopman_model = GraphAwareKoopmanNet(edge_index=edge_index, node_dim=6, edge_dim=1, hidden_dim=64, latent_dim=latent_dim, n_atoms=n_atoms)
         gru_model = GraphAwareGRUNet(edge_index=edge_index, node_dim=6, edge_dim=1, hidden_dim=64, latent_dim=latent_dim, n_atoms=n_atoms)
         
