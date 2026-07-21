@@ -255,6 +255,9 @@ class EquivariantKoopmanNet(nn.Module):
             rollout.append(z)
         return torch.stack(rollout, dim=1)
 
+    def get_global_K(self):
+        return self.K_global.detach().cpu().numpy()
+
     def compute_loss(self, outputs, targets, lengths, epoch, node_features=None):
         z_seq = outputs
         B, T, n_atoms, hidden_dim = z_seq.shape
