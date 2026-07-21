@@ -15,7 +15,7 @@ from koopman_evolver.data.nbody_adapter import NBodyAdapter
 from koopman_evolver.data.traffic_adapter import TrafficAdapter
 from koopman_evolver.data.dataset_split import GraphDatasetSplit
 from koopman_evolver.models.koopman_net import GraphAwareKoopmanNet, EquivariantKoopmanNet
-from koopman_evolver.models.baselines import GraphAwareGRUNet, FlatKoopmanNet, EGNNDynamicsNet
+from koopman_evolver.models.baselines import GraphAwareGRUNet, FlatKoopmanNet, EGNNDynamicsNet, SEGNODynamicsNet
 from koopman_evolver.training.trainer import GraphAwareTrainer
 from koopman_evolver.evaluation.physics_eval import GraphAwareKoopmanEvaluator, PhysicsEval, ThreeWayAblationEvaluator
 
@@ -41,7 +41,7 @@ def build_parser():
     
     train_parser.add_argument("--data-dir", type=str, default="./data", help="Path to local data dir (for nbody/traffic)")
     
-    train_parser.add_argument("--model", type=str, default="koopman", choices=["koopman", "gru", "flat", "e-gkn", "egnn"], help="Model architecture")
+    train_parser.add_argument("--model", type=str, default="koopman", choices=["koopman", "gru", "flat", "e-gkn", "egnn", "segno"], help="Model architecture")
     train_parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
     train_parser.add_argument("--batch-size", type=int, default=16, help="Batch size")
     train_parser.add_argument("--hidden-dim", type=int, default=64, help="Hidden dimension size")
@@ -183,6 +183,15 @@ def train(args):
         )
         seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
         ckpt_name = f"egnn_{name}{seed_tag}_best.pt"
+        
+    elif args.model == "segno":
+        model = SEGNODynamicsNet(
+            edge_index=edge_index,
+            node_dim=6, edge_dim=1, hidden_dim=args.hidden_dim, 
+            latent_dim=latent_dim, n_atoms=n_atoms
+        )
+        seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
+        ckpt_name = f"segno_{name}{seed_tag}_best.pt"
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     
     os.makedirs(args.out_dir, exist_ok=True)

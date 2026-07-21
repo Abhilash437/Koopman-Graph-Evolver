@@ -837,3 +837,131 @@ class EquivariantGRUNet(nn.Module):
         pass
 
 
+
+import sys
+import os
+
+# Ensure SEGNO is on the path so we can import its modules
+segno_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'SEGNO', 'MD22', 'spatial_graph'))
+if segno_path not in sys.path:
+    sys.path.append(segno_path)
+
+try:
+    from n_body_system.model import SEGNO  # type: ignore
+except ImportError:
+    SEGNO = None
+
+class SEGNODynamicsNet(nn.Module):
+    """
+    SEGNO wrapper complying with the GraphAwareTrainer and Evaluator API.
+    """
+    def __init__(self, edge_index, node_dim=6, edge_dim=1, hidden_dim=64, latent_dim=576, n_atoms=9):
+        super().__init__()
+        self.latent_dim = latent_dim
+        self.hidden_dim = hidden_dim
+        self.n_atoms = n_atoms
+        self.register_buffer("edge_index", edge_index.clone())
+
+        if SEGNO is None:
+            raise ImportError("SEGNO could not be imported. Ensure SEGNO repository is accessible.")
+
+        self.model = SEGNO(
+            in_node_nf=node_dim,
+            in_edge_nf=0, # passing 0 since we don't pass edge_attr
+            hidden_nf=hidden_dim,
+            device='cpu',
+            n_layers=3,
+            coords_weight=1.0,
+            recurrent=False,
+            norm_diff=False,
+            tanh=False
+        )
+
+        # DummyDecoder extracts the first 3 dimensions (coordinates)
+        self.decoder = DummyDecoder(n_atoms=n_atoms, hidden_dim=node_dim)
+
+    def forward(self, node_features, edge_index, edge_features, lengths):
+        # We just pass the 6D (pos+vel) node features as the rolling state
+        return node_features
+
+    def transition_step(self, z):
+        if z.dim() == 2:
+            z = z.unsqueeze(0)
+            is_2d = True
+        else:
+            is_2d = False
+
+        B_steps, n_atoms, node_dim = z.shape
+        x_t = z[:, :, :3]
+        v_t = z[:, :, 3:6]
+
+        # Flatten for SEGNO
+        x_flat = x_t.reshape(-1, 3)
+        v_flat = v_t.reshape(-1, 3)
+        his_flat = z.reshape(-1, node_dim)
+
+        # Batch edges
+        E = self.edge_index.size(1)
+        batch_offsets = torch.arange(B_steps, device=z.device).repeat_interleave(E) * n_atoms
+        edge_idx_batched = self.edge_index.repeat(1, B_steps) + batch_offsets
+
+        x_next_flat = self.model(his_flat, x_flat, edge_idx_batched, v_flat, edge_attr=None)
+
+        x_next = x_next_flat.reshape(B_steps, n_atoms, 3)
+        v_next = x_next - x_t  # Approximate next velocity
+
+        z_next = torch.cat([x_next, v_next], dim=-1)
+        if is_2d: z_next = z_next.squeeze(0)
+        return z_next
+
+    def forward_rollout(self, z0, steps=100, latent_seed=True):
+        if latent_seed:
+            z = z0[:, 0]
+        else:
+            raise NotImplementedError()
+        rollout = [z]
+        for _ in range(1, steps):
+            z = self.transition_step(z)
+            rollout.append(z)
+        return torch.stack(rollout, dim=1)
+
+    def compute_loss(self, outputs, targets, lengths, epoch, node_features=None):
+        z_seq = outputs
+        B, T, n_atoms, node_dim = z_seq.shape
+
+        z_t_list, z_tgt_list = [], []
+        for b, L in enumerate(lengths):
+            if L < 2: continue
+            z_t_list.append(z_seq[b, :L-1])
+            z_tgt_list.append(z_seq[b, 1:L])
+
+        z_t = torch.cat(z_t_list, dim=0)
+        z_tgt = torch.cat(z_tgt_list, dim=0)
+
+        z_pred = self.transition_step(z_t)
+        l_dyn = F.mse_loss(z_pred, z_tgt)
+
+        if node_features is not None:
+            coords_true = node_features[:, :, :, :3]
+            z_flat = z_seq.reshape(B, T, n_atoms * node_dim)
+            coords_pred = self.decoder(z_flat)
+            l_recon = F.mse_loss(coords_pred, coords_true)
+
+            src_idx, dst_idx = self.edge_index[0], self.edge_index[1]
+            d_true = torch.norm(coords_true[:, :, src_idx] - coords_true[:, :, dst_idx], dim=-1)
+            d_pred = torch.norm(coords_pred[:, :, src_idx] - coords_pred[:, :, dst_idx], dim=-1)
+            l_iso = F.mse_loss(d_pred, d_true)
+        else:
+            l_recon = 0.0
+            l_iso = 0.0
+
+        total_loss = l_dyn + 10.0 * l_recon + 5.0 * l_iso
+        return total_loss, {
+            'loss': total_loss.item(),
+            'l_dyn': l_dyn.item(),
+            'l_recon': l_recon.item() if node_features is not None else 0.0,
+            'l_iso': l_iso.item() if node_features is not None else 0.0,
+        }
+
+    def post_step_hook(self):
+        pass
