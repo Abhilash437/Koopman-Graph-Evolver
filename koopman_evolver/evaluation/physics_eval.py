@@ -803,8 +803,8 @@ class PhysicsEval:
             B = roll_koop.shape[0]
             h_dim = 64
 
-            coords_koop = self.koop_model.decoder(roll_koop.reshape(B * (steps+1), self.n_atoms * h_dim)).reshape(B, steps+1, self.n_atoms, 3).cpu()
-            coords_gru = self.gru_model.decoder(roll_gru.reshape(B * (steps+1), self.n_atoms * h_dim)).reshape(B, steps+1, self.n_atoms, 3).cpu()
+            coords_koop = self.koop_model.decoder(roll_koop.reshape(B * (steps+1), -1)).reshape(B, steps+1, self.n_atoms, 3).cpu()
+            coords_gru = self.gru_model.decoder(roll_gru.reshape(B * (steps+1), -1)).reshape(B, steps+1, self.n_atoms, 3).cpu()
 
         def calc_drifts(coords):
             b_vals = []
