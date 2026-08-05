@@ -925,9 +925,9 @@ class ThreeWayEvalResults:
     graph_gru_coord_energy_ratio: Optional[np.ndarray] = None
 
     # Parameter counts
-    flat_params: int
-    graph_koop_params: int
-    graph_gru_params: int
+    flat_params: int = 0
+    graph_koop_params: int = 0
+    graph_gru_params: int = 0
 
     meta: dict = field(default_factory=dict)
 
