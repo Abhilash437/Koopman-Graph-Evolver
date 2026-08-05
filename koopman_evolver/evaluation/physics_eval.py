@@ -1112,7 +1112,8 @@ class ThreeWayAblationEvaluator:
 
     def _compute_coordinate_energy_ratio(self, coords, edge_idx):
         """Compute physical coordinate-space edge length ratio E(t) / E(0) over rollout (Option B)."""
-        src, dst = edge_idx[0], edge_idx[1]
+        src = edge_idx[0].to(coords.device)
+        dst = edge_idx[1].to(coords.device)
         # coords: (B, steps+1, n_atoms, 3)
         diffs = coords[:, :, src] - coords[:, :, dst]
         edge_lengths = torch.norm(diffs, dim=-1)
