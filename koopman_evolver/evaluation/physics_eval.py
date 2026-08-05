@@ -1105,6 +1105,17 @@ class ThreeWayAblationEvaluator:
         ratios = (energy / e0).cpu().numpy()
         return np.mean(ratios, axis=0)
 
+    def _compute_coordinate_energy_ratio(self, coords, edge_idx):
+        """Compute physical coordinate-space edge length ratio E(t) / E(0) over rollout (Option B)."""
+        src, dst = edge_idx[0], edge_idx[1]
+        # coords: (B, steps+1, n_atoms, 3)
+        diffs = coords[:, :, src] - coords[:, :, dst]
+        edge_lengths = torch.norm(diffs, dim=-1)
+        mean_edge = torch.mean(edge_lengths, dim=-1)
+        e0 = mean_edge[:, 0:1] + 1e-8
+        ratios = (mean_edge / e0).cpu().numpy()
+        return np.mean(ratios, axis=0)
+
     def run(self, test_split, steps=29) -> ThreeWayEvalResults:
         """Run the full 3-way comparison."""
         node_feats = torch.tensor(test_split.node_features, dtype=torch.float32, device=self.device)
