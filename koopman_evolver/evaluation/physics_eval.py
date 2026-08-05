@@ -919,6 +919,11 @@ class ThreeWayEvalResults:
     graph_koop_energy_ratio: np.ndarray
     graph_gru_energy_ratio: np.ndarray
 
+    # Physical coordinate energy ratio (Option B)
+    flat_coord_energy_ratio: Optional[np.ndarray] = None
+    graph_koop_coord_energy_ratio: Optional[np.ndarray] = None
+    graph_gru_coord_energy_ratio: Optional[np.ndarray] = None
+
     # Parameter counts
     flat_params: int
     graph_koop_params: int
@@ -1174,6 +1179,11 @@ class ThreeWayAblationEvaluator:
             self.graph_gru_model, node_feats, edge_idx, edge_feats, lengths, steps, is_flat=False
         )
 
+        # Physical coordinate energy ratio (Option B)
+        flat_coord_energy = self._compute_coordinate_energy_ratio(coords_flat, edge_idx)
+        gk_coord_energy = self._compute_coordinate_energy_ratio(coords_graph_koop, edge_idx)
+        gg_coord_energy = self._compute_coordinate_energy_ratio(coords_graph_gru, edge_idx)
+
         # Parameter counts
         flat_params = sum(p.numel() for p in self.flat_model.parameters())
         gk_params = sum(p.numel() for p in self.graph_koop_model.parameters())
@@ -1188,6 +1198,7 @@ class ThreeWayAblationEvaluator:
             graph_koop_bond_drift=gkb, graph_koop_angle_drift=gka, graph_koop_torsion_drift=gkt,
             graph_gru_bond_drift=ggb, graph_gru_angle_drift=gga, graph_gru_torsion_drift=ggt,
             flat_energy_ratio=flat_energy, graph_koop_energy_ratio=gk_energy, graph_gru_energy_ratio=gg_energy,
+            flat_coord_energy_ratio=flat_coord_energy, graph_koop_coord_energy_ratio=gk_coord_energy, graph_gru_coord_energy_ratio=gg_coord_energy,
             flat_params=flat_params, graph_koop_params=gk_params, graph_gru_params=gg_params,
             meta=test_split.meta,
         )
@@ -1236,11 +1247,18 @@ class ThreeWayAblationEvaluator:
         print(f"  {'Torsion Drift (°)':<25} {results.flat_torsion_drift[S]:.6f} "
               f"{results.graph_koop_torsion_drift[S]:>12.6f} {results.graph_gru_torsion_drift[S]:>12.6f}")
 
-        print(f"\n{'LATENT ENERGY RATIO @ step {S+1}':^80}")
+        print(f"\n{'LATENT NORM RATIO @ step {S+1}':^80}")
         print(thin)
         print(f"  Flat Koopman  : {float(results.flat_energy_ratio[S]):.4f}")
         print(f"  Graph Koopman : {float(results.graph_koop_energy_ratio[S]):.4f}")
         print(f"  Graph GRU     : {float(results.graph_gru_energy_ratio[S]):.4f}")
+
+        if results.flat_coord_energy_ratio is not None:
+            print(f"\n{'PHYSICAL COORDINATE EDGE LENGTH RATIO (OPTION B) @ step {S+1}':^80}")
+            print(thin)
+            print(f"  Flat Koopman  : {float(results.flat_coord_energy_ratio[S]):.4f}")
+            print(f"  Graph Koopman : {float(results.graph_koop_coord_energy_ratio[S]):.4f}")
+            print(f"  Graph GRU     : {float(results.graph_gru_coord_energy_ratio[S]):.4f}")
 
         # Winner analysis
         print(f"\n{'WINNER ANALYSIS':^80}")
