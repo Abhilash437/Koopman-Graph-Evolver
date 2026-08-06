@@ -1,4 +1,4 @@
-# Koopman Graph Evolver: Long-Horizon Graph Dynamical Simulation
+# Beyond MSE: Geometry-Preserving Latent Dynamics for Long-Horizon Graph Simulation
 
 A deep learning framework for predicting deterministic, long-horizon molecular and physical dynamics using Graph-Aware Koopman operator theory and orthogonal latent transitions.
 
