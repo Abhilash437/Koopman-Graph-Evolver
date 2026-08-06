@@ -1,86 +1,36 @@
 # Beyond MSE: Geometry-Preserving Latent Dynamics for Long-Horizon Graph Simulation
 
-A deep learning framework for predicting deterministic, long-horizon molecular and physical dynamics using Graph-Aware Koopman operator theory and orthogonal latent transitions.
-
-## Overview
-
-This project implements the **Koopman Graph Evolver (KGE)** (and equivariant variations like E-GKN and EGNN) to model complex physical and molecular systems. Supported systems span 14 physical benchmarks: 8 MD17 molecules, 4 MD22 macromolecules, and 2 N-body physical systems. We conduct multi-seed 3-way ablation sweeps comparing orthogonal matrix-exponential Graph Koopman transitions ($\mathbf{K} \in SO(n)$) against unconstrained Graph GRUs and graph-free Flat Koopman baselines.
-
-**Key Innovation:** Enforcing matrix-exponential orthogonal transitions ($\mathbf{K} = \exp(\mathbf{A}_{\text{skew}}\Delta t) \in SO(n)$) in latent space. This guarantees exact latent norm and volume preservation by construction ($R_{\text{norm}} = 1.0000$), preventing latent drift and suppressing unphysical structural deformation over extended autoregressive rollouts.
+Official implementation of the paper **"Beyond MSE: Geometry-Preserving Latent Dynamics for Long-Horizon Graph Simulation"**.
 
 ---
 
-## Repository Structure
+## Executive Summary & Abstract
 
-```text
-.
-├── koopman_evolver/           # Core Python package
-│   ├── data/                  # MD17, MD22, N-Body data loaders & adapters
-│   ├── models/                # GraphAwareKoopmanNet, GraphAwareGRUNet, FlatKoopmanNet, E-GKN
-│   ├── training/              # PyTorch training loops with physical loss formulation
-│   ├── evaluation/            # PhysicsEval suite computing physical geometric diagnostics
-│   └── cli.py                 # Command Line Interface entrypoint
-├── paper/                     # Manuscript source files, LaTeX tables, and figures
-│   └── main.tex               # Double-blind conference manuscript
-├── app.py                     # Streamlit Web GUI Dashboard
-├── requirements.txt           # Python dependencies
-├── Dockerfile                 # Containerization setup
-└── docker-compose.yml         # Container execution setup
-```
+Graph neural networks (GNNs) achieve high short-horizon accuracy for physical simulation, yet accumulate severe latent drift over long-horizon autoregressive rollouts. Unconstrained temporal transitions (e.g., GRUs) allow latent representation norms to progressively expand or contract, producing trajectories with competitive pointwise rollout MSE despite catastrophic physical structural breakdown (bond stretching, angle distortion, and centroid collapse).
+
+We introduce the **Koopman Graph Evolver (KGE)** and its $SE(3)$-equivariant extension **E-GKN**, which replace unconstrained recurrent transitions with an orthogonal Koopman operator acting in latent space. Parameterizing the transition via a matrix exponential $\mathbf{K} = \exp(\mathbf{A}_{\text{skew}}\Delta t)$ guarantees $\mathbf{K} \in SO(n)$, preserving latent norm and volume by construction ($R_{\text{norm}} = 1.0000$). 
+
+Evaluated across **14 physical systems** (8 MD17 molecules, 4 MD22 macromolecules, and 2 N-body particle systems), geometry-preserving latent transitions yield statistically significant reductions in structural drift ($p \le 3.1 \times 10^{-4}$, Wilcoxon signed-rank test), maintaining physical coordinate edge length ratios ($R_{\text{edge}} \approx 1.0$) across extended rollouts.
 
 ---
 
-## Quick Start (Docker)
+## Key Contributions & Mathematical Framework
 
-Run training and evaluation via Docker:
-
-### Launch Web GUI Dashboard
-```bash
-docker compose up koopman-gui
-```
-*Access the dashboard at `http://localhost:8501` in your browser.*
-
-### Using the CLI via Docker
-
-**Train a model:**
-```bash
-# Models: 'koopman', 'gru', 'flat', 'e-gkn', or 'egnn'
-# Systems: 'ethanol' (MD17), 'stachyose' (MD22), 'charged' / 'springs' (N-body)
-docker compose run --build --rm koopman train --md22 stachyose --model koopman --epochs 100
-```
-
-**Evaluate trained models (3-Way Ablation):**
-```bash
-docker compose run --rm koopman eval --md22 stachyose \
-  --koopman-ckpt checkpoints/graph_aware_koopman_stachyose_best.pt \
-  --gru-ckpt checkpoints/graph_aware_gru_stachyose_best.pt \
-  --flat-ckpt checkpoints/flat_koopman_stachyose_best.pt
-```
+1. **Characterization of Structural Drift & The MSE Paradox:** We show that standard rollout MSE fails to reflect physical degradation, rewarding models that expand uniformly or collapse toward spatial centroids. Physical topology metrics (bond, angle, torsion drift, and coordinate edge ratios) are required for faithful physical evaluation.
+2. **Volume-Preserving Koopman Transitions:** Enforcing $\mathbf{K} = \exp(\mathbf{A}_{\text{skew}}\Delta t) \in SO(n)$ guarantees:
+   - $\mathbf{K}^\top \mathbf{K} = \mathbf{I}$ (Orthogonality)
+   - $\det(\mathbf{K}) = 1$ (Orientation and volume preservation)
+   - $\|\mathbf{K}\mathbf{z}\|_2 = \|\mathbf{z}\|_2$ (Norm preservation in latent feature space)
+3. **Physical Regularization in 3D Space:** While the non-linear spatial decoder does not mathematically mandate 3D coordinate edge ratios $R_{\text{edge}} = 1.0$ identically, latent orthogonality strongly regularizes spatial decoding, keeping $R_{\text{edge}} \approx 1.0$ ($0.9416$--$1.0112$) across extended rollouts.
+4. **$SE(3)$-Equivariant Extension (E-GKN):** Augmenting equivariant message passing with shared node-local Koopman transitions prevents numerical divergence ($10^{27}$ / NaNs) present in standard EGNNs on large flexible macromolecules.
 
 ---
 
-## Quick Start (Native Python)
+## Empirical Benchmark Results (14 Physical Systems)
 
-```bash
-# 1. Install requirements
-pip install -r requirements.txt
+### 1. Multi-Seed Robustness (Averaged Over Seeds {42, 1337, 2026})
 
-# 2. Run the Streamlit GUI
-streamlit run app.py
-
-# 3. OR Run the CLI
-python -m koopman_evolver.cli train --md22 stachyose --model koopman --epochs 100
-```
-
----
-
-## Benchmark Results Across 14 Physical Systems
-
-Multi-seed evaluation across random seeds ($\{42, 1337, 2026\}$) on 14 physical systems comparing **Graph Koopman (KGE)**, **Graph GRU (G-GRU)**, and **Flat Koopman (Flat-K)**:
-
-### 1. Multi-Seed Robustness (Representative Benchmark Systems)
-
-| System | Model | Rollout MSE | Bond Drift (Å) | Angle Drift (°) | Torsion Drift (°) | Physical Coord Edge Ratio ($R_{\text{edge}}$) |
+| System | Model | Rollout MSE (29-step) | Bond Drift (Å) | Angle Drift (°) | Torsion Drift (°) | Physical Coord Edge Ratio ($R_{\text{edge}}$) |
 |:---|:---|:---:|:---:|:---:|:---:|:---:|
 | **aspirin** | Flat Koopman | 0.0715 ± 0.008 | 0.0816 ± 0.004 | 4.55 ± 0.45 | 5.38 ± 0.32 | 0.9707 |
 | | **Graph Koopman** | 0.2411 ± 0.003 | **0.0045 ± 0.004** | **0.09 ± 0.02** | **0.15 ± 0.06** | **0.9974** |
@@ -95,13 +45,104 @@ Multi-seed evaluation across random seeds ($\{42, 1337, 2026\}$) on 14 physical 
 | | **Graph Koopman** | 0.1764 ± 0.003 | **0.0248 ± 0.009** | **2.59 ± 1.01** | **6.05 ± 1.79** | **1.0112** |
 | | Graph GRU | 0.0531 ± 0.002 | 0.6167 ± 0.013 | 46.51 ± 0.87 | 80.21 ± 0.95 | 1.6290 |
 
+### 2. Statistical Significance Across All 14 Systems
+
+One-sided Wilcoxon signed-rank test results comparing Graph Koopman (\GKE{}) vs. Graph GRU (\GGRU{}) across 14 physical systems:
+
+| Metric | \GKE{} Win Rate | Wilcoxon Statistic | $p$-value |
+|:---|:---:|:---:|:---:|
+| **Bond Drift (Å)** | 13/14 | 1.5 | $3.05 \times 10^{-4}$ |
+| **Angle Drift (°)** | 14/14 | 0.0 | $6.10 \times 10^{-5}$ |
+| **Torsion Drift (°)** | 14/14 | 0.0 | $6.10 \times 10^{-5}$ |
+| **Latent Norm Ratio ($|R_{\text{norm}} - 1|$)** | 14/14 | 0.0 | $6.10 \times 10^{-5}$ |
+
 ---
 
-### Key Empirical Findings
+## How-To Guide: Installation & Execution
 
-1. **Physical Structural Stability:** Graph Koopman (\GKE{}) reduces bond drift across 13/14 systems and angle/torsion drift across **14/14 systems** compared to Graph GRU ($p < 3.1 \times 10^{-4}$, Wilcoxon signed-rank test).
-2. **Latent & Coordinate Regularization:** Feature-space latent norm ratios are strictly $R_{\text{norm}} = 1.0000$ by construction. Decoded 3D physical coordinate edge ratios remain highly stable ($R_{\text{edge}} \approx 1.0$), whereas Graph GRUs experience coordinate explosion ($1.63\times$ expansion on N-body springs) or coordinate decay ($0.73\times$ collapse on stachyose).
-3. **The MSE Paradox:** Pointwise rollout MSE can reward models that uniformly expand or collapse toward spatial centroids. Physical topology metrics (bond, angle, torsion drift and coordinate edge ratios) accurately reflect true geometric fidelity.
+### 1. Installation
+
+**Prerequisites:** Python 3.9+ or Docker.
+
+```bash
+# Clone the repository
+git clone https://github.com/Abhilash437/Koopman-Graph-Evolver.git
+cd Koopman-Graph-Evolver
+
+# Install requirements
+pip install -r requirements.txt
+```
+
+---
+
+### 2. Quick Start via Docker (Recommended)
+
+**Launch Interactive Web GUI Dashboard:**
+```bash
+docker compose up koopman-gui
+```
+*Access the dashboard at `http://localhost:8501` in your browser.*
+
+**Train a model via Docker CLI:**
+```bash
+# Models: 'koopman', 'gru', 'flat', 'e-gkn', 'egnn'
+# Systems: 'ethanol' (MD17), 'stachyose' (MD22), 'charged' / 'springs' (N-body)
+docker compose run --build --rm koopman train --md22 stachyose --model koopman --epochs 100
+```
+
+**Run 3-Way Ablation Evaluation Suite:**
+```bash
+docker compose run --rm koopman eval --md22 stachyose \
+  --koopman-ckpt checkpoints/graph_aware_koopman_stachyose_best.pt \
+  --gru-ckpt checkpoints/graph_aware_gru_stachyose_best.pt \
+  --flat-ckpt checkpoints/flat_koopman_stachyose_best.pt
+```
+
+---
+
+### 3. Quick Start via Native CLI
+
+**Train Graph Koopman on MD17 / MD22 / N-Body:**
+```bash
+# Train Graph Koopman on Aspirin (MD17)
+python -m koopman_evolver.cli train --md17 aspirin --model koopman --seed 42 --epochs 100
+
+# Train E-GKN on DHA (MD22)
+python -m koopman_evolver.cli train --md22 dha --model e-gkn --seed 42 --epochs 100
+
+# Train Graph Koopman on N-Body Charged
+python -m koopman_evolver.cli train --nbody charged --model koopman --seed 42 --epochs 100
+```
+
+**Evaluate Trained Checkpoints:**
+```bash
+python -m koopman_evolver.cli eval --md17 aspirin \
+  --koopman-ckpt checkpoints/graph_aware_koopman_aspirin_seed42.pt \
+  --gru-ckpt checkpoints/graph_aware_gru_aspirin_seed42.pt \
+  --flat-ckpt checkpoints/flat_koopman_aspirin_seed42.pt \
+  --rollout-steps 29
+```
+
+---
+
+## Repository Structure
+
+```text
+.
+├── koopman_evolver/           # Modular Python package
+│   ├── data/                  # MD17, MD22, N-Body adapters and Kaggle downloaders
+│   ├── models/                # GraphAwareKoopmanNet, GraphAwareGRUNet, FlatKoopmanNet, E-GKN
+│   ├── training/              # PyTorch training loops with matrix exponential transitions
+│   ├── evaluation/            # PhysicsEval suite & multi-system ablation metrics
+│   └── cli.py                 # Command-line interface entrypoint
+├── paper/                     # Manuscript source files, LaTeX tables, & figures
+│   └── main.tex               # Conference manuscript LaTeX source
+├── eval_logs/                 # Raw experimental log files & diagnostic evaluation outputs
+├── app.py                     # Interactive Streamlit Web GUI Dashboard
+├── requirements.txt           # Python package dependencies
+├── Dockerfile                 # Container setup
+└── docker-compose.yml         # Service definitions & volume mappings
+```
 
 ---
 
