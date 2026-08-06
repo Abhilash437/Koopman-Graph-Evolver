@@ -8,7 +8,7 @@ Official implementation of the paper **"Beyond MSE: Geometry-Preserving Latent D
 
 Graph neural networks (GNNs) achieve high short-horizon accuracy for physical simulation, yet accumulate severe latent drift over long-horizon autoregressive rollouts. Unconstrained temporal transitions (e.g., GRUs) allow latent representation norms to progressively expand or contract, producing trajectories with competitive pointwise rollout MSE despite catastrophic physical structural breakdown (bond stretching, angle distortion, and centroid collapse).
 
-We introduce the **Koopman Graph Evolver (KGE)** and its $SE(3)$-equivariant extension **E-GKN**, which replace unconstrained recurrent transitions with an orthogonal Koopman operator acting in latent space. Parameterizing the transition via a matrix exponential $\mathbf{K} = \exp(\mathbf{A}_{\text{skew}}\Delta t)$ guarantees $\mathbf{K} \in SO(n)$, preserving latent norm and volume by construction ($R_{\text{norm}} = 1.0000$). 
+We introduce the **Koopman Graph Evolver (KGE)** and its SE(3)-equivariant extension **E-GKN**, which replace unconstrained recurrent transitions with an orthogonal Koopman operator acting in latent space. Parameterizing the transition via a matrix exponential $K = \exp(A_{\text{skew}} \Delta t)$ guarantees $K \in \text{SO}(n)$, preserving latent norm and volume by construction ($R_{\text{norm}} = 1.0000$).
 
 Evaluated across **14 physical systems** (8 MD17 molecules, 4 MD22 macromolecules, and 2 N-body particle systems), geometry-preserving latent transitions yield statistically significant reductions in structural drift ($p \le 3.1 \times 10^{-4}$, Wilcoxon signed-rank test), maintaining physical coordinate edge length ratios ($R_{\text{edge}} \approx 1.0$) across extended rollouts.
 
@@ -17,12 +17,12 @@ Evaluated across **14 physical systems** (8 MD17 molecules, 4 MD22 macromolecule
 ## Key Contributions & Mathematical Framework
 
 1. **Characterization of Structural Drift & The MSE Paradox:** We show that standard rollout MSE fails to reflect physical degradation, rewarding models that expand uniformly or collapse toward spatial centroids. Physical topology metrics (bond, angle, torsion drift, and coordinate edge ratios) are required for faithful physical evaluation.
-2. **Volume-Preserving Koopman Transitions:** Enforcing $\mathbf{K} = \exp(\mathbf{A}_{\text{skew}}\Delta t) \in SO(n)$ guarantees:
-   - $\mathbf{K}^\top \mathbf{K} = \mathbf{I}$ (Orthogonality)
-   - $\det(\mathbf{K}) = 1$ (Orientation and volume preservation)
-   - $\|\mathbf{K}\mathbf{z}\|_2 = \|\mathbf{z}\|_2$ (Norm preservation in latent feature space)
-3. **Physical Regularization in 3D Space:** While the non-linear spatial decoder does not mathematically mandate 3D coordinate edge ratios $R_{\text{edge}} = 1.0$ identically, latent orthogonality strongly regularizes spatial decoding, keeping $R_{\text{edge}} \approx 1.0$ ($0.9416$--$1.0112$) across extended rollouts.
-4. **$SE(3)$-Equivariant Extension (E-GKN):** Augmenting equivariant message passing with shared node-local Koopman transitions prevents numerical divergence ($10^{27}$ / NaNs) present in standard EGNNs on large flexible macromolecules.
+2. **Volume-Preserving Koopman Transitions:** Enforcing $K = \exp(A_{\text{skew}} \Delta t) \in \text{SO}(n)$ guarantees:
+   - $K^T K = I$ (Orthogonality)
+   - $\det(K) = 1$ (Orientation and volume preservation)
+   - $\|Kz\|_2 = \|z\|_2$ (Norm preservation in latent feature space)
+3. **Physical Regularization in 3D Space:** While the non-linear spatial decoder does not mathematically mandate 3D coordinate edge ratios $R_{\text{edge}} = 1.0$ identically, latent orthogonality strongly regularizes spatial decoding, keeping $R_{\text{edge}} \approx 1.0$ ($0.9416$–$1.0112$) across extended rollouts.
+4. **SE(3)-Equivariant Extension (E-GKN):** Augmenting equivariant message passing with shared node-local Koopman transitions prevents numerical divergence ($10^{27}$ / NaNs) present in standard EGNNs on large flexible macromolecules.
 
 ---
 
@@ -47,14 +47,14 @@ Evaluated across **14 physical systems** (8 MD17 molecules, 4 MD22 macromolecule
 
 ### 2. Statistical Significance Across All 14 Systems
 
-One-sided Wilcoxon signed-rank test results comparing Graph Koopman (\GKE{}) vs. Graph GRU (\GGRU{}) across 14 physical systems:
+One-sided Wilcoxon signed-rank test results comparing Graph Koopman (KGE) vs. Graph GRU (G-GRU) across 14 physical systems:
 
-| Metric | \GKE{} Win Rate | Wilcoxon Statistic | $p$-value |
+| Metric | KGE Win Rate | Wilcoxon Statistic | p-value |
 |:---|:---:|:---:|:---:|
 | **Bond Drift (Å)** | 13/14 | 1.5 | $3.05 \times 10^{-4}$ |
 | **Angle Drift (°)** | 14/14 | 0.0 | $6.10 \times 10^{-5}$ |
 | **Torsion Drift (°)** | 14/14 | 0.0 | $6.10 \times 10^{-5}$ |
-| **Latent Norm Ratio ($|R_{\text{norm}} - 1|$)** | 14/14 | 0.0 | $6.10 \times 10^{-5}$ |
+| **Latent Norm Ratio \|R_norm - 1\|** | 14/14 | 0.0 | $6.10 \times 10^{-5}$ |
 
 ---
 
