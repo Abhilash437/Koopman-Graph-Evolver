@@ -60,7 +60,7 @@ One-sided Wilcoxon signed-rank test results comparing Graph Koopman (KGE) vs. Gr
 
 ## Quickstart & Installation
 
-[![PyPI Version](https://badge.fury.io/py/koopman-graph-evolver.svg)](https://badge.fury.io/py/koopman-graph-evolver)
+[![PyPI Version](https://img.shields.io/pypi/v/koopman-graph-evolver.svg)](https://pypi.org/project/koopman-graph-evolver/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/koopman-graph-evolver.svg)](https://pypi.org/project/koopman-graph-evolver/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
