@@ -58,24 +58,80 @@ One-sided Wilcoxon signed-rank test results comparing Graph Koopman (KGE) vs. Gr
 
 ---
 
-## How-To Guide: Installation & Execution
+## Quickstart & Installation
 
-### 1. Installation
+[![PyPI Version](https://badge.fury.io/py/koopman-graph-evolver.svg)](https://badge.fury.io/py/koopman-graph-evolver)
+[![Python Versions](https://img.shields.io/pypi/pyversions/koopman-graph-evolver.svg)](https://pypi.org/project/koopman-graph-evolver/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Prerequisites:** Python 3.9+ or Docker.
+### 1. Install via PyPI
 
 ```bash
-# Clone the repository
-git clone https://github.com/Abhilash437/Koopman-Graph-Evolver.git
-cd Koopman-Graph-Evolver
+# Core package (PyTorch & PyG models + PhysicsEval suite)
+pip install koopman-graph-evolver
 
-# Install requirements
-pip install -r requirements.txt
+# Optional extras: GUI dashboard or dataset downloaders
+pip install "koopman-graph-evolver[gui,data]"
 ```
 
 ---
 
-### 2. Quick Start via Docker (Recommended)
+### 2. Python API Quickstart
+
+**Use Graph-Aware Koopman Net or E-GKN in your PyTorch code:**
+
+```python
+import torch
+from koopman_evolver import GraphAwareKoopmanNet, EGKN, PhysicsEval
+
+# 1. Define graph connectivity (e.g. molecular bond edges)
+edge_index = torch.tensor([[0, 1, 1, 2], [1, 0, 2, 1]], dtype=torch.long)
+
+# 2. Instantiate Graph-Aware Koopman Net or Equivariant Koopman Net (E-GKN)
+model = GraphAwareKoopmanNet(
+    edge_index=edge_index,
+    node_dim=6,
+    hidden_dim=64,
+    n_atoms=3
+)
+
+# 3. Perform volume-preserving long-horizon rollout
+h0 = torch.randn(1, 5, 3, 64)  # Initial trajectory (B, T, N, D)
+rollout = model.forward_rollout(h0, steps=30)
+
+# 4. Evaluate physical structural drift metrics
+evaluator = PhysicsEval(koop_model=model, gru_model=model, test_split=None, n_atoms=3, molecule_name="custom")
+bonds, angles, torsions = evaluator.extract_topology(edge_index)
+```
+
+---
+
+### 3. Execution via Executable CLI (`kge`)
+
+**Train models via `kge` CLI:**
+```bash
+# Train Graph Koopman on Aspirin (MD17)
+kge train --md17 aspirin --model koopman --seed 42 --epochs 100
+
+# Train E-GKN on DHA (MD22)
+kge train --md22 dha --model e-gkn --seed 42 --epochs 100
+
+# Train Graph Koopman on N-Body Charged
+kge train --nbody charged --model koopman --seed 42 --epochs 100
+```
+
+**Evaluate Checkpoints via `kge` CLI:**
+```bash
+kge eval --md17 aspirin \
+  --koopman-ckpt checkpoints/graph_aware_koopman_aspirin_seed42.pt \
+  --gru-ckpt checkpoints/graph_aware_gru_aspirin_seed42.pt \
+  --flat-ckpt checkpoints/flat_koopman_aspirin_seed42.pt \
+  --rollout-steps 29
+```
+
+---
+
+### 4. Quick Start via Docker (Recommended for GUI)
 
 **Launch Interactive Web GUI Dashboard:**
 ```bash
@@ -85,42 +141,7 @@ docker compose up koopman-gui
 
 **Train a model via Docker CLI:**
 ```bash
-# Models: 'koopman', 'gru', 'flat', 'e-gkn', 'egnn'
-# Systems: 'ethanol' (MD17), 'stachyose' (MD22), 'charged' / 'springs' (N-body)
 docker compose run --build --rm koopman train --md22 stachyose --model koopman --epochs 100
-```
-
-**Run 3-Way Ablation Evaluation Suite:**
-```bash
-docker compose run --rm koopman eval --md22 stachyose \
-  --koopman-ckpt checkpoints/graph_aware_koopman_stachyose_best.pt \
-  --gru-ckpt checkpoints/graph_aware_gru_stachyose_best.pt \
-  --flat-ckpt checkpoints/flat_koopman_stachyose_best.pt
-```
-
----
-
-### 3. Quick Start via Native CLI
-
-**Train Graph Koopman on MD17 / MD22 / N-Body:**
-```bash
-# Train Graph Koopman on Aspirin (MD17)
-python -m koopman_evolver.cli train --md17 aspirin --model koopman --seed 42 --epochs 100
-
-# Train E-GKN on DHA (MD22)
-python -m koopman_evolver.cli train --md22 dha --model e-gkn --seed 42 --epochs 100
-
-# Train Graph Koopman on N-Body Charged
-python -m koopman_evolver.cli train --nbody charged --model koopman --seed 42 --epochs 100
-```
-
-**Evaluate Trained Checkpoints:**
-```bash
-python -m koopman_evolver.cli eval --md17 aspirin \
-  --koopman-ckpt checkpoints/graph_aware_koopman_aspirin_seed42.pt \
-  --gru-ckpt checkpoints/graph_aware_gru_aspirin_seed42.pt \
-  --flat-ckpt checkpoints/flat_koopman_aspirin_seed42.pt \
-  --rollout-steps 29
 ```
 
 ---

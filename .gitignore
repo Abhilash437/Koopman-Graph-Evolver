@@ -21,3 +21,7 @@
 /SEGNO
 /paper
 /eval_logs
+dist/
+build/
+*.egg-info/
+.pytest_cache/
