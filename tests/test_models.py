@@ -4,6 +4,7 @@ import torch.nn as nn
 import numpy as np
 
 from koopman_evolver import GraphAwareKoopmanNet, EquivariantKoopmanNet, EGKN, GraphAwareGRUNet, FlatKoopmanNet
+from koopman_evolver.utils.geometry import safe_matrix_exp
 
 
 def test_matrix_exp_orthogonality():
@@ -11,12 +12,28 @@ def test_matrix_exp_orthogonality():
     hidden_dim = 16
     A_raw = torch.randn(hidden_dim, hidden_dim)
     A_skew = A_raw - A_raw.T
-    K = torch.matrix_exp(A_skew)
+    K = safe_matrix_exp(A_skew)
     
     # Check K^T K == I
     I = torch.eye(hidden_dim)
     KtK = torch.matmul(K.T, K)
     assert torch.allclose(KtK, I, atol=1e-5), f"Max diff from I: {torch.max(torch.abs(KtK - I))}"
+
+
+def test_safe_matrix_exp_mps():
+    """Verify safe_matrix_exp works seamlessly on MPS device if available."""
+    hidden_dim = 8
+    A_raw = torch.randn(hidden_dim, hidden_dim)
+    A_skew = A_raw - A_raw.T
+    
+    if torch.backends.mps.is_available():
+        A_mps = A_skew.to("mps")
+        K_mps = safe_matrix_exp(A_mps)
+        assert K_mps.device.type == "mps"
+        assert K_mps.shape == (hidden_dim, hidden_dim)
+    else:
+        K_cpu = safe_matrix_exp(A_skew)
+        assert K_cpu.shape == (hidden_dim, hidden_dim)
 
 
 def test_latent_norm_preservation():

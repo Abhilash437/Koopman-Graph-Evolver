@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "koopman-graph-evolver"
-version = "0.1.0"
+version = "0.1.1"
 description = "Geometry-Preserving Latent Dynamics & SE(3)-Equivariant Koopman Operators for Long-Horizon Graph Simulation"
 readme = "README.md"
 license = { text = "MIT" }

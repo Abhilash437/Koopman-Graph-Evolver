@@ -1,4 +1,5 @@
 from .blocks import GraphEncoder, GraphDecoder, EquivariantGraphEncoder, EquivariantGraphDecoder, DummyDecoder
+from koopman_evolver.utils.geometry import safe_matrix_exp
 from torch_geometric.utils import to_dense_batch
 import torch
 import torch.nn as nn
@@ -269,7 +270,7 @@ class FlatKoopmanNet(nn.Module):
     @property
     def K(self):
         A_skew = self.A_raw - self.A_raw.T
-        return torch.matrix_exp(A_skew)
+        return safe_matrix_exp(A_skew)
 
     def get_global_K(self):
         return self.K.detach().cpu().numpy()
@@ -640,7 +641,7 @@ class EquivariantKoopmanNet(nn.Module):
         term_self = torch.kron(I_N, A_self_skew)
         term_edge = torch.kron(P_sym, A_edge_skew)
         A_glob = term_self + self.alpha * term_edge
-        return torch.matrix_exp(A_glob)
+        return safe_matrix_exp(A_glob)
 
     def forward(self, node_features, edge_index, edge_features, lengths):
         return self.encoder(node_features, edge_index)
