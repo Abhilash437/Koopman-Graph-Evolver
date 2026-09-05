@@ -13,12 +13,13 @@
 # Models trained per setting × seed: koopman, gru, flat
 # (flat enables Phase-9 dual ratios: latent energy + bonded R_edge)
 #
-# Usage (on GCP VM, from repo root):
+# Usage (on GCP VM, from repo root; log is written automatically):
 #   chmod +x run_rebuttal_aspirin.sh
-#   ./run_rebuttal_aspirin.sh 2>&1 | tee eval_logs/rebuttal_1LAu_aspirin.log
+#   ./run_rebuttal_aspirin.sh
 #
 # Env knobs:
 #   EPOCHS=100 SEEDS="42 1337 2026" DEVICE=cuda BATCH_SIZE=32 INCLUDE_FLAT=1 SKIP_FULL=0
+#   LOG_FILE=eval_logs/rebuttal_1LAu_aspirin.log
 # ==============================================================================
 
 set -euo pipefail
@@ -33,14 +34,25 @@ SKIP_FULL="${SKIP_FULL:-0}"
 CKPT_DIR="${CKPT_DIR:-./checkpoints/rebuttal_1LAu}"
 OUT_DIR="${OUT_DIR:-./results/rebuttal_1LAu/aspirin}"
 ROLLOUT_STEPS="${ROLLOUT_STEPS:-29}"
+LOG_FILE="${LOG_FILE:-eval_logs/rebuttal_1LAu_aspirin.log}"
 
 # shellcheck disable=SC2206
 SEED_LIST=(${SEEDS})
 
-mkdir -p "${CKPT_DIR}" "${OUT_DIR}" eval_logs
+mkdir -p "${CKPT_DIR}" "${OUT_DIR}" "$(dirname "${LOG_FILE}")"
 
 PYTHON="${PYTHON:-python3}"
+export PYTHONUNBUFFERED=1
 CLI=(${PYTHON} -u -m koopman_evolver.cli)
+
+# Built-in tee so the log is always on disk (do not wrap in an outer tee).
+LOG_FILE="$(cd "$(dirname "${LOG_FILE}")" && pwd)/$(basename "${LOG_FILE}")"
+if [[ -z "${_REBUTTAL_LOGGING:-}" ]]; then
+  export _REBUTTAL_LOGGING=1
+  : > "${LOG_FILE}"
+  exec > >(tee -a "${LOG_FILE}") 2>&1
+  echo "Logging stdout/stderr to ${LOG_FILE}"
+fi
 
 train_one() {
   local model="$1"
@@ -150,7 +162,9 @@ echo "   LATENT ENERGY RATIO              ≈ paper R_norm  (pre-decode)"
 echo "   PHYSICAL COORDINATE EDGE RATIO   ≈ paper R_edge  (post-decode)"
 echo ""
 echo " Aggregate mean±std across seeds from the PHASE 9 / physical"
-echo " diagnostics blocks in eval_logs/rebuttal_1LAu_aspirin.log"
+echo " diagnostics blocks in:"
+echo "   ${LOG_FILE}"
+ls -la "${LOG_FILE}" || true
 echo ""
 echo " Decision guide (use noreg mean±std):"
 echo "   A) KGE still wins bond/angle/torsion/R_norm under noreg"

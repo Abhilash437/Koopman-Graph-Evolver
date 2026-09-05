@@ -5,11 +5,12 @@
 #
 # Seeds default to paper protocol {42, 1337, 2026}.
 #
-# Usage:
-#   OUTCOME=A ./run_rebuttal_expand.sh 2>&1 | tee eval_logs/rebuttal_1LAu_expand.log
+# Usage (log is written automatically; do NOT wrap in an outer tee):
+#   OUTCOME=B ./run_rebuttal_expand.sh
 #
 # Env knobs:
 #   OUTCOME=A|B SEEDS="42 1337 2026" DEVICE=cuda INCLUDE_FLAT=1 EPOCHS=100
+#   LOG_FILE=eval_logs/rebuttal_1LAu_expand.log
 # ==============================================================================
 
 set -euo pipefail
@@ -28,13 +29,24 @@ BATCH_MD17="${BATCH_MD17:-32}"
 BATCH_MD22="${BATCH_MD22:-16}"
 CKPT_DIR="${CKPT_DIR:-./checkpoints/rebuttal_1LAu}"
 OUT_DIR="${OUT_DIR:-./results/rebuttal_1LAu}"
+LOG_FILE="${LOG_FILE:-eval_logs/rebuttal_1LAu_expand.log}"
 PYTHON="${PYTHON:-python3}"
+export PYTHONUNBUFFERED=1
 CLI=(${PYTHON} -u -m koopman_evolver.cli)
 
 # shellcheck disable=SC2206
 SEED_LIST=(${SEEDS})
 
-mkdir -p "${CKPT_DIR}" "${OUT_DIR}" eval_logs
+mkdir -p "${CKPT_DIR}" "${OUT_DIR}" "$(dirname "${LOG_FILE}")"
+
+# Built-in tee so the log is always on disk (last aspirin run missed this).
+LOG_FILE="$(cd "$(dirname "${LOG_FILE}")" && pwd)/$(basename "${LOG_FILE}")"
+if [[ -z "${_REBUTTAL_LOGGING:-}" ]]; then
+  export _REBUTTAL_LOGGING=1
+  : > "${LOG_FILE}"
+  exec > >(tee -a "${LOG_FILE}") 2>&1
+  echo "Logging stdout/stderr to ${LOG_FILE}"
+fi
 
 # Conservative expansion set for A/B
 MD17_MOLS=(malonaldehyde benzene ethanol)
@@ -119,5 +131,7 @@ done
 echo "====================================================="
 echo " Expansion complete (multi-seed)."
 echo " Results under ${OUT_DIR}/<system>/noreg/seed{42,1337,2026}/"
-echo " Aggregate mean±std across seeds from the tee'd log."
+echo " Log file: ${LOG_FILE}"
+ls -la "${LOG_FILE}" || true
+echo " Aggregate mean±std across seeds from that log."
 echo "====================================================="
