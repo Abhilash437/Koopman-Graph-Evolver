@@ -1,5 +1,6 @@
 from .blocks import GraphEncoder, GraphDecoder, EquivariantGraphEncoder, EquivariantGraphDecoder, DummyDecoder
 from koopman_evolver.utils.geometry import safe_matrix_exp
+from koopman_evolver.utils.loss_weights import get_loss_weights
 from torch_geometric.utils import to_dense_batch
 import torch
 import torch.nn as nn
@@ -183,13 +184,21 @@ class GraphAwareGRUNet(nn.Module):
             l_recon = 0.0
             l_iso = 0.0
 
-        total_loss = l_dyn + 2.0 * l_collapse + 10.0 * l_recon + 5.0 * l_iso
+        w = get_loss_weights(self)
+        total_loss = (
+            w["dyn"] * l_dyn
+            + w["collapse"] * l_collapse
+            + w["recon"] * l_recon
+            + w["iso"] * l_iso
+        )
         return total_loss, {
             'loss': total_loss.item(),
             'l_dyn': l_dyn.item(),
             'l_collapse': l_collapse.item(),
             'l_recon': l_recon.item() if node_features is not None else 0.0,
             'l_iso': l_iso.item() if node_features is not None else 0.0,
+            'lambda_collapse': w["collapse"],
+            'lambda_iso': w["iso"],
             'alpha': float(self.alpha.item())
         }
 
@@ -346,12 +355,20 @@ class FlatKoopmanNet(nn.Module):
         else:
             l_recon = 0.0
 
-        total_loss = l_dyn + 2.0 * l_collapse + 10.0 * l_recon
+        w = get_loss_weights(self)
+        # Flat Koopman has no bonded graph iso term in this baseline.
+        total_loss = (
+            w["dyn"] * l_dyn
+            + w["collapse"] * l_collapse
+            + w["recon"] * l_recon
+        )
         return total_loss, {
             'loss': total_loss.item(),
             'l_dyn': l_dyn.item(),
             'l_collapse': l_collapse.item(),
             'l_recon': l_recon.item() if node_features is not None else 0.0,
+            'lambda_collapse': w["collapse"],
+            'lambda_iso': w["iso"],
         }
 
     def post_step_hook(self):
@@ -522,13 +539,21 @@ class EGNNDynamicsNet(nn.Module):
             l_recon = 0.0
             l_iso = 0.0
 
-        total_loss = l_dyn + 2.0 * l_collapse + 10.0 * l_recon + 5.0 * l_iso
+        w = get_loss_weights(self)
+        total_loss = (
+            w["dyn"] * l_dyn
+            + w["collapse"] * l_collapse
+            + w["recon"] * l_recon
+            + w["iso"] * l_iso
+        )
         return total_loss, {
             'loss': total_loss.item(),
             'l_dyn': l_dyn.item(),
             'l_collapse': l_collapse.item(),
             'l_recon': l_recon.item() if node_features is not None else 0.0,
             'l_iso': l_iso.item() if node_features is not None else 0.0,
+            'lambda_collapse': w["collapse"],
+            'lambda_iso': w["iso"],
             'alpha': float(self.alpha.item())
         }
 
@@ -715,13 +740,21 @@ class EquivariantKoopmanNet(nn.Module):
             l_recon = 0.0
             l_iso = 0.0
 
-        total_loss = l_dyn + 2.0 * l_collapse + 10.0 * l_recon + 5.0 * l_iso
+        w = get_loss_weights(self)
+        total_loss = (
+            w["dyn"] * l_dyn
+            + w["collapse"] * l_collapse
+            + w["recon"] * l_recon
+            + w["iso"] * l_iso
+        )
         return total_loss, {
             'loss': total_loss.item(),
             'l_dyn': l_dyn.item(),
             'l_collapse': l_collapse.item(),
             'l_recon': l_recon.item() if node_features is not None else 0.0,
             'l_iso': l_iso.item() if node_features is not None else 0.0,
+            'lambda_collapse': w["collapse"],
+            'lambda_iso': w["iso"],
             'alpha': float(self.alpha.item())
         }
 
@@ -824,13 +857,21 @@ class EquivariantGRUNet(nn.Module):
             l_recon = 0.0
             l_iso = 0.0
 
-        total_loss = l_dyn + 2.0 * l_collapse + 10.0 * l_recon + 5.0 * l_iso
+        w = get_loss_weights(self)
+        total_loss = (
+            w["dyn"] * l_dyn
+            + w["collapse"] * l_collapse
+            + w["recon"] * l_recon
+            + w["iso"] * l_iso
+        )
         return total_loss, {
             'loss': total_loss.item(),
             'l_dyn': l_dyn.item(),
             'l_collapse': l_collapse.item(),
             'l_recon': l_recon.item() if node_features is not None else 0.0,
             'l_iso': l_iso.item() if node_features is not None else 0.0,
+            'lambda_collapse': w["collapse"],
+            'lambda_iso': w["iso"],
             'alpha': float(self.alpha.item())
         }
 
@@ -968,12 +1009,22 @@ class SEGNODynamicsNet(nn.Module):
             l_recon = 0.0
             l_iso = 0.0
 
-        total_loss = l_dyn + 10.0 * l_recon + 5.0 * l_iso
+        w = get_loss_weights(self)
+        # SEGNO baseline historically omitted l_collapse; weight still honored if set.
+        l_collapse = 0.0
+        total_loss = (
+            w["dyn"] * l_dyn
+            + w["collapse"] * l_collapse
+            + w["recon"] * l_recon
+            + w["iso"] * l_iso
+        )
         return total_loss, {
             'loss': total_loss.item(),
             'l_dyn': l_dyn.item(),
             'l_recon': l_recon.item() if node_features is not None else 0.0,
             'l_iso': l_iso.item() if node_features is not None else 0.0,
+            'lambda_collapse': w["collapse"],
+            'lambda_iso': w["iso"],
         }
 
     def post_step_hook(self):

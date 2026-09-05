@@ -18,6 +18,12 @@ from koopman_evolver.models.koopman_net import GraphAwareKoopmanNet, Equivariant
 from koopman_evolver.models.baselines import GraphAwareGRUNet, FlatKoopmanNet, EGNNDynamicsNet, SEGNODynamicsNet
 from koopman_evolver.training.trainer import GraphAwareTrainer
 from koopman_evolver.evaluation.physics_eval import GraphAwareKoopmanEvaluator, PhysicsEval, ThreeWayAblationEvaluator
+from koopman_evolver.utils.loss_weights import (
+    DEFAULT_LOSS_WEIGHTS,
+    apply_loss_weights,
+    format_loss_weights,
+    resolve_loss_weights,
+)
 
 def get_device():
     if torch.cuda.is_available():
@@ -49,6 +55,36 @@ def build_parser():
     train_parser.add_argument("--weight-decay", type=float, default=1e-4, help="AdamW weight decay")
     train_parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
     train_parser.add_argument("--out-dir", type=str, default="./checkpoints", help="Output directory for checkpoints")
+    train_parser.add_argument(
+        "--lambda-dyn",
+        type=float,
+        default=DEFAULT_LOSS_WEIGHTS["dyn"],
+        help="Weight for latent dynamics consistency loss (default: 1.0)",
+    )
+    train_parser.add_argument(
+        "--lambda-recon",
+        type=float,
+        default=DEFAULT_LOSS_WEIGHTS["recon"],
+        help="Weight for coordinate reconstruction loss (default: 10.0)",
+    )
+    train_parser.add_argument(
+        "--lambda-collapse",
+        type=float,
+        default=DEFAULT_LOSS_WEIGHTS["collapse"],
+        help="Weight for anti-collapse hinge loss (default: 2.0; set 0 to disable)",
+    )
+    train_parser.add_argument(
+        "--lambda-iso",
+        type=float,
+        default=DEFAULT_LOSS_WEIGHTS["iso"],
+        help="Weight for isometric bond-distance loss (default: 5.0; set 0 to disable)",
+    )
+    train_parser.add_argument(
+        "--run-tag",
+        type=str,
+        default=None,
+        help="Optional suffix appended to checkpoint names (e.g. full, noreg)",
+    )
     
     # Eval command
     eval_parser = subparsers.add_parser("eval", help="Evaluate a trained model")
@@ -140,32 +176,38 @@ def train(args):
     
     # Latent dim = n_atoms * hidden_dim
     latent_dim = n_atoms * args.hidden_dim
+    loss_weights = resolve_loss_weights(
+        lambda_dyn=args.lambda_dyn,
+        lambda_recon=args.lambda_recon,
+        lambda_collapse=args.lambda_collapse,
+        lambda_iso=args.lambda_iso,
+    )
+    seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
+    run_tag = f"_{args.run_tag}" if args.run_tag else ""
     
     print(f"[{name}] Initializing {args.model} model...")
+    print(f"[{name}] Loss weights: {format_loss_weights(loss_weights)}")
     if args.model == "koopman":
         model = GraphAwareKoopmanNet(
             edge_index=edge_index,
             node_dim=6, edge_dim=1, hidden_dim=args.hidden_dim, 
             latent_dim=latent_dim, n_atoms=n_atoms
         )
-        seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
-        ckpt_name = f"graph_aware_koopman_{name}{seed_tag}_best.pt"
+        ckpt_name = f"graph_aware_koopman_{name}{seed_tag}{run_tag}_best.pt"
     elif args.model == "gru":
         model = GraphAwareGRUNet(
             edge_index=edge_index,
             node_dim=6, edge_dim=1, hidden_dim=args.hidden_dim, 
             latent_dim=latent_dim, n_atoms=n_atoms
         )
-        seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
-        ckpt_name = f"graph_aware_gru_{name}{seed_tag}_best.pt"
+        ckpt_name = f"graph_aware_gru_{name}{seed_tag}{run_tag}_best.pt"
     elif args.model == "flat":
         model = FlatKoopmanNet(
             n_atoms=n_atoms,
             input_dim=6,
             latent_dim=latent_dim
         )
-        seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
-        ckpt_name = f"flat_koopman_{name}{seed_tag}_best.pt"
+        ckpt_name = f"flat_koopman_{name}{seed_tag}{run_tag}_best.pt"
         
     elif args.model == "e-gkn":
         model = EquivariantKoopmanNet(
@@ -173,8 +215,7 @@ def train(args):
             node_dim=6, edge_dim=1, hidden_dim=args.hidden_dim, 
             latent_dim=latent_dim, n_atoms=n_atoms
         )
-        seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
-        ckpt_name = f"e_gkn_{name}{seed_tag}_best.pt"
+        ckpt_name = f"e_gkn_{name}{seed_tag}{run_tag}_best.pt"
         
     elif args.model == "egnn":
         model = EGNNDynamicsNet(
@@ -182,8 +223,7 @@ def train(args):
             node_dim=6, edge_dim=1, hidden_dim=args.hidden_dim, 
             latent_dim=latent_dim, n_atoms=n_atoms
         )
-        seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
-        ckpt_name = f"egnn_{name}{seed_tag}_best.pt"
+        ckpt_name = f"egnn_{name}{seed_tag}{run_tag}_best.pt"
         
     elif args.model == "segno":
         model = SEGNODynamicsNet(
@@ -191,8 +231,8 @@ def train(args):
             node_dim=6, edge_dim=1, hidden_dim=args.hidden_dim, 
             latent_dim=latent_dim, n_atoms=n_atoms
         )
-        seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
-        ckpt_name = f"segno_{name}{seed_tag}_best.pt"
+        ckpt_name = f"segno_{name}{seed_tag}{run_tag}_best.pt"
+    apply_loss_weights(model, loss_weights)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     
     os.makedirs(args.out_dir, exist_ok=True)
