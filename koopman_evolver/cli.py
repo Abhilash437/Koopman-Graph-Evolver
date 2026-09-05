@@ -25,12 +25,52 @@ from koopman_evolver.utils.loss_weights import (
     resolve_loss_weights,
 )
 
-def get_device():
-    if torch.cuda.is_available():
-        return "cuda"
-    elif torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
+def get_device(requested: str = "auto"):
+    """
+    Resolve the compute device.
+
+    requested:
+      - "auto": cuda > mps > cpu
+      - "cuda" / "cpu" / "mps": force that device (cuda fails loudly if unavailable)
+    """
+    cuda_ok = torch.cuda.is_available()
+    mps_ok = hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
+
+    if requested == "auto":
+        if cuda_ok:
+            device = "cuda"
+        elif mps_ok:
+            device = "mps"
+        else:
+            device = "cpu"
+    elif requested == "cuda":
+        if not cuda_ok:
+            raise RuntimeError(
+                "Requested --device cuda but torch.cuda.is_available() is False. "
+                "Check: (1) GPU attached to the VM, (2) nvidia-smi works, "
+                "(3) PyTorch was installed with CUDA "
+                "(e.g. pip install torch --index-url https://download.pytorch.org/whl/cu124)."
+            )
+        device = "cuda"
+    elif requested in ("cpu", "mps"):
+        if requested == "mps" and not mps_ok:
+            raise RuntimeError("Requested --device mps but MPS is not available.")
+        device = requested
+    else:
+        raise ValueError(f"Unknown device '{requested}'. Use auto|cuda|cpu|mps.")
+
+    print("=" * 60)
+    print(f" Device selection: requested={requested} -> using={device}")
+    print(f"  torch={torch.__version__}")
+    print(f"  torch.cuda.is_available()={cuda_ok}")
+    if cuda_ok:
+        print(f"  cuda_device_count={torch.cuda.device_count()}")
+        print(f"  cuda_device_name={torch.cuda.get_device_name(0)}")
+    else:
+        print("  CUDA not visible to PyTorch (common causes: CPU-only torch wheel,")
+        print("  missing NVIDIA driver, or VM has no GPU attached).")
+    print("=" * 60)
+    return device
 
 def build_parser():
     parser = argparse.ArgumentParser(description="Koopman Graph Evolver CLI")
@@ -55,6 +95,13 @@ def build_parser():
     train_parser.add_argument("--weight-decay", type=float, default=1e-4, help="AdamW weight decay")
     train_parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
     train_parser.add_argument("--out-dir", type=str, default="./checkpoints", help="Output directory for checkpoints")
+    train_parser.add_argument(
+        "--device",
+        type=str,
+        default="auto",
+        choices=["auto", "cuda", "cpu", "mps"],
+        help="Compute device (default: auto). Use 'cuda' to fail if GPU is unavailable.",
+    )
     train_parser.add_argument(
         "--lambda-dyn",
         type=float,
@@ -104,6 +151,13 @@ def build_parser():
     eval_parser.add_argument("--segno-ckpt", type=str, default=None, help="Path to SEGNO baseline checkpoint")
     eval_parser.add_argument("--rollout-steps", type=int, default=29, help="Number of steps for rollout evaluation")
     eval_parser.add_argument("--out-dir", type=str, default="./results", help="Output directory for plots")
+    eval_parser.add_argument(
+        "--device",
+        type=str,
+        default="auto",
+        choices=["auto", "cuda", "cpu", "mps"],
+        help="Compute device (default: auto). Use 'cuda' to fail if GPU is unavailable.",
+    )
     
     return parser
 
@@ -144,7 +198,7 @@ def train(args):
         torch.backends.cudnn.benchmark = False
         print(f"[seed={args.seed}] Random seeds set for reproducibility.")
     
-    device = get_device()
+    device = get_device(getattr(args, "device", "auto"))
     if args.md17:
         dataset, name = "md17", args.md17
     elif args.md22:
@@ -253,7 +307,7 @@ def train(args):
     print(f"[{name}] Training complete. Best checkpoint saved to {os.path.join(args.out_dir, ckpt_name)}")
 
 def evaluate(args):
-    device = get_device()
+    device = get_device(getattr(args, "device", "auto"))
     if args.md17:
         dataset, name = "md17", args.md17
     elif args.md22:

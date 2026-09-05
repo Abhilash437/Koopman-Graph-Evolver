@@ -22,6 +22,7 @@ fi
 
 EPOCHS="${EPOCHS:-100}"
 SEEDS="${SEEDS:-42 1337 2026}"
+DEVICE="${DEVICE:-cuda}"
 BATCH_MD17="${BATCH_MD17:-32}"
 BATCH_MD22="${BATCH_MD22:-16}"
 CKPT_DIR="${CKPT_DIR:-./checkpoints/rebuttal_1LAu}"
@@ -61,6 +62,7 @@ train_eval_mol_seed() {
       --epochs "${EPOCHS}" \
       --batch-size "${batch}" \
       --seed "${seed}" \
+      --device "${DEVICE}" \
       --out-dir "${CKPT_DIR}" \
       --run-tag "${run_tag}" \
       --lambda-dyn 1.0 \
@@ -81,12 +83,13 @@ train_eval_mol_seed() {
     ${dataset_flag} "${mol}" \
     --koopman-ckpt "${CKPT_DIR}/graph_aware_koopman_${mol}_seed${seed}_${run_tag}_best.pt" \
     --gru-ckpt "${CKPT_DIR}/graph_aware_gru_${mol}_seed${seed}_${run_tag}_best.pt" \
+    --device "${DEVICE}" \
     --rollout-steps 29 \
     --out-dir "${OUT_DIR}/${prefix}_${mol}/${run_tag}/seed${seed}"
 }
 
 echo "====================================================="
-echo " Rebuttal expansion (OUTCOME=${OUTCOME}, SEEDS=${SEEDS})"
+echo " Rebuttal expansion (OUTCOME=${OUTCOME}, SEEDS=${SEEDS}, DEVICE=${DEVICE})"
 echo "====================================================="
 
 for mol in "${MD17_MOLS[@]}"; do

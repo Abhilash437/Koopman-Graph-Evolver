@@ -18,7 +18,7 @@
 #   ./run_rebuttal_aspirin.sh 2>&1 | tee eval_logs/rebuttal_1LAu_aspirin.log
 #
 # Env knobs:
-#   EPOCHS=100 SEEDS="42 1337 2026" BATCH_SIZE=32 INCLUDE_FLAT=0 SKIP_FULL=0
+#   EPOCHS=100 SEEDS="42 1337 2026" DEVICE=cuda BATCH_SIZE=32 INCLUDE_FLAT=0 SKIP_FULL=0
 # ==============================================================================
 
 set -euo pipefail
@@ -27,6 +27,7 @@ EPOCHS="${EPOCHS:-100}"
 # Paper multi-seed protocol (space-separated; override via SEEDS="42" for a smoke test)
 SEEDS="${SEEDS:-42 1337 2026}"
 BATCH_SIZE="${BATCH_SIZE:-32}"
+DEVICE="${DEVICE:-cuda}"
 INCLUDE_FLAT="${INCLUDE_FLAT:-0}"
 SKIP_FULL="${SKIP_FULL:-0}"
 CKPT_DIR="${CKPT_DIR:-./checkpoints/rebuttal_1LAu}"
@@ -58,6 +59,7 @@ train_one() {
     --epochs "${EPOCHS}" \
     --batch-size "${BATCH_SIZE}" \
     --seed "${seed}" \
+    --device "${DEVICE}" \
     --out-dir "${CKPT_DIR}" \
     --run-tag "${run_tag}" \
     --lambda-dyn 1.0 \
@@ -88,6 +90,7 @@ eval_pair() {
     --koopman-ckpt "${koop_ckpt}" \
     --gru-ckpt "${gru_ckpt}" \
     "${flat_args[@]}" \
+    --device "${DEVICE}" \
     --rollout-steps "${ROLLOUT_STEPS}" \
     --out-dir "${OUT_DIR}/${run_tag}/seed${seed}"
 }
@@ -112,7 +115,7 @@ run_setting() {
 echo "====================================================="
 echo " Rebuttal 1LAu — Aspirin Loss Ablation (Multi-Seed)"
 echo " EPOCHS=${EPOCHS} SEEDS=${SEEDS} BATCH_SIZE=${BATCH_SIZE}"
-echo " INCLUDE_FLAT=${INCLUDE_FLAT} SKIP_FULL=${SKIP_FULL}"
+echo " DEVICE=${DEVICE} INCLUDE_FLAT=${INCLUDE_FLAT} SKIP_FULL=${SKIP_FULL}"
 echo " CKPT_DIR=${CKPT_DIR}"
 echo " OUT_DIR=${OUT_DIR}"
 echo "====================================================="
