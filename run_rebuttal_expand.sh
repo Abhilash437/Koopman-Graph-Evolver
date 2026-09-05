@@ -9,7 +9,7 @@
 #   OUTCOME=A ./run_rebuttal_expand.sh 2>&1 | tee eval_logs/rebuttal_1LAu_expand.log
 #
 # Env knobs:
-#   OUTCOME=A|B SEEDS="42 1337 2026" EPOCHS=100
+#   OUTCOME=A|B SEEDS="42 1337 2026" DEVICE=cuda INCLUDE_FLAT=1 EPOCHS=100
 # ==============================================================================
 
 set -euo pipefail
@@ -23,6 +23,7 @@ fi
 EPOCHS="${EPOCHS:-100}"
 SEEDS="${SEEDS:-42 1337 2026}"
 DEVICE="${DEVICE:-cuda}"
+INCLUDE_FLAT="${INCLUDE_FLAT:-1}"
 BATCH_MD17="${BATCH_MD17:-32}"
 BATCH_MD22="${BATCH_MD22:-16}"
 CKPT_DIR="${CKPT_DIR:-./checkpoints/rebuttal_1LAu}"
@@ -54,7 +55,12 @@ train_eval_mol_seed() {
   local lam_c="$6"
   local lam_i="$7"
 
-  for model in koopman gru; do
+  local models=(koopman gru)
+  if [[ "${INCLUDE_FLAT}" == "1" ]]; then
+    models+=(flat)
+  fi
+
+  for model in "${models[@]}"; do
     echo "TRAIN ${dataset_flag} ${mol} model=${model} tag=${run_tag} seed=${seed}"
     "${CLI[@]}" train \
       ${dataset_flag} "${mol}" \
@@ -78,18 +84,24 @@ train_eval_mol_seed() {
     prefix="md22"
   fi
 
+  local flat_args=()
+  if [[ "${INCLUDE_FLAT}" == "1" ]]; then
+    flat_args+=(--flat-ckpt "${CKPT_DIR}/flat_koopman_${mol}_seed${seed}_${run_tag}_best.pt")
+  fi
+
   echo "EVAL ${dataset_flag} ${mol} tag=${run_tag} seed=${seed}"
   "${CLI[@]}" eval \
     ${dataset_flag} "${mol}" \
     --koopman-ckpt "${CKPT_DIR}/graph_aware_koopman_${mol}_seed${seed}_${run_tag}_best.pt" \
     --gru-ckpt "${CKPT_DIR}/graph_aware_gru_${mol}_seed${seed}_${run_tag}_best.pt" \
+    "${flat_args[@]}" \
     --device "${DEVICE}" \
     --rollout-steps 29 \
     --out-dir "${OUT_DIR}/${prefix}_${mol}/${run_tag}/seed${seed}"
 }
 
 echo "====================================================="
-echo " Rebuttal expansion (OUTCOME=${OUTCOME}, SEEDS=${SEEDS}, DEVICE=${DEVICE})"
+echo " Rebuttal expansion (OUTCOME=${OUTCOME}, SEEDS=${SEEDS}, DEVICE=${DEVICE}, INCLUDE_FLAT=${INCLUDE_FLAT})"
 echo "====================================================="
 
 for mol in "${MD17_MOLS[@]}"; do

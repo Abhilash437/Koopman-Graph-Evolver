@@ -10,15 +10,15 @@
 #   2) noreg : reviewer ablation (lambda_collapse=0, lambda_iso=0)
 #              keeps only L_recon + L_dyn
 #
-# Models trained per setting × seed: koopman, gru
-# Optional: flat (set INCLUDE_FLAT=1)
+# Models trained per setting × seed: koopman, gru, flat
+# (flat enables Phase-9 dual ratios: latent energy + bonded R_edge)
 #
 # Usage (on GCP VM, from repo root):
 #   chmod +x run_rebuttal_aspirin.sh
 #   ./run_rebuttal_aspirin.sh 2>&1 | tee eval_logs/rebuttal_1LAu_aspirin.log
 #
 # Env knobs:
-#   EPOCHS=100 SEEDS="42 1337 2026" DEVICE=cuda BATCH_SIZE=32 INCLUDE_FLAT=0 SKIP_FULL=0
+#   EPOCHS=100 SEEDS="42 1337 2026" DEVICE=cuda BATCH_SIZE=32 INCLUDE_FLAT=1 SKIP_FULL=0
 # ==============================================================================
 
 set -euo pipefail
@@ -28,7 +28,7 @@ EPOCHS="${EPOCHS:-100}"
 SEEDS="${SEEDS:-42 1337 2026}"
 BATCH_SIZE="${BATCH_SIZE:-32}"
 DEVICE="${DEVICE:-cuda}"
-INCLUDE_FLAT="${INCLUDE_FLAT:-0}"
+INCLUDE_FLAT="${INCLUDE_FLAT:-1}"
 SKIP_FULL="${SKIP_FULL:-0}"
 CKPT_DIR="${CKPT_DIR:-./checkpoints/rebuttal_1LAu}"
 OUT_DIR="${OUT_DIR:-./results/rebuttal_1LAu/aspirin}"
@@ -143,6 +143,11 @@ echo "   ${OUT_DIR}/full/seed{42,1337,2026}/"
 echo "   ${OUT_DIR}/noreg/seed{42,1337,2026}/"
 echo " Checkpoints:"
 echo "   ${CKPT_DIR}/graph_aware_{koopman,gru}_aspirin_seed*_{full,noreg}_best.pt"
+echo "   ${CKPT_DIR}/flat_koopman_aspirin_seed*_{full,noreg}_best.pt  (Phase-9 R_edge)"
+echo ""
+echo " In each eval log, confirm BOTH ratios from 3-way ablation:"
+echo "   LATENT ENERGY RATIO              ≈ paper R_norm  (pre-decode)"
+echo "   PHYSICAL COORDINATE EDGE RATIO   ≈ paper R_edge  (post-decode)"
 echo ""
 echo " Aggregate mean±std across seeds from the PHASE 9 / physical"
 echo " diagnostics blocks in eval_logs/rebuttal_1LAu_aspirin.log"
