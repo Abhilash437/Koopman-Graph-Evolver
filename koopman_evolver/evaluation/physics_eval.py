@@ -824,6 +824,13 @@ class PhysicsEval:
         kb, ka, kt = calc_drifts(coords_koop)
         gb, ga, gt = calc_drifts(coords_gru)
 
+        S = steps
+        print(f"\n[{self.molecule_name}] Physical drifts @ t={S} (lower better; drift from decoded t=0)")
+        print(f"  {'metric':<18} {'KGE':>12} {'G-GRU':>12}")
+        print(f"  {'Bond (Å)':<18} {kb[S]:>12.6f} {gb[S]:>12.6f}")
+        print(f"  {'Angle (°)':<18} {ka[S]:>12.6f} {ga[S]:>12.6f}")
+        print(f"  {'Torsion (°)':<18} {kt[S]:>12.6f} {gt[S]:>12.6f}")
+
         fig = plt.figure(figsize=(18, 10))
         gs = gridspec.GridSpec(2, 3, height_ratios=[1, 1], hspace=0.3, wspace=0.25)
         steps_arr = np.arange(steps + 1)

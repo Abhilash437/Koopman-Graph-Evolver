@@ -173,10 +173,17 @@ train_eval_arm() {
   echo "------------------------------------------------------------"
   echo " EVAL KGE(${KGE_TAG}) vs G-GRU(${run_tag}) ${mol} seed=${seed}"
   echo "------------------------------------------------------------"
+  local flat_args=()
+  local flat_ckpt="${CKPT_DIR}/flat_koopman_${mol}_seed${seed}_${KGE_TAG}_best.pt"
+  if [[ -f "${flat_ckpt}" ]]; then
+    flat_args+=(--flat-ckpt "${flat_ckpt}")
+    echo "   (+ Phase-9 R_norm/R_edge via flat ${flat_ckpt})"
+  fi
   "${CLI[@]}" eval \
     ${dataset_flag} "${mol}" \
     --koopman-ckpt "${koop_ckpt}" \
     --gru-ckpt "${gru_ckpt}" \
+    "${flat_args[@]}" \
     --device "${DEVICE}" \
     --rollout-steps 29 \
     --out-dir "${OUT_DIR}/${mol}_${run_tag}/seed${seed}"
@@ -187,10 +194,16 @@ train_eval_arm() {
       echo "------------------------------------------------------------"
       echo " EVAL reference: KGE(${KGE_TAG}) vs paper G-GRU(${BASE_GRU_TAG}) ${mol} seed=${seed}"
       echo "------------------------------------------------------------"
+      local flat_args=()
+      local flat_ckpt="${CKPT_DIR}/flat_koopman_${mol}_seed${seed}_${KGE_TAG}_best.pt"
+      if [[ -f "${flat_ckpt}" ]]; then
+        flat_args+=(--flat-ckpt "${flat_ckpt}")
+      fi
       "${CLI[@]}" eval \
         ${dataset_flag} "${mol}" \
         --koopman-ckpt "${koop_ckpt}" \
         --gru-ckpt "${base_gru}" \
+        "${flat_args[@]}" \
         --device "${DEVICE}" \
         --rollout-steps 29 \
         --out-dir "${ref_dir}"
