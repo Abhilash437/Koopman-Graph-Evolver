@@ -8,24 +8,27 @@
 # existing KGE full checkpoints.
 #
 # Modes:
-#   MODE=combined  (default) — UNROLL=16 + TRAIN_NOISE_STD=0.01 together
-#   MODE=matrix              — three arms for attribution:
+#   MODE=matrix    (default) — three arms for attribution:
 #                                (1) pf-only   UNROLL=16 noise=0
 #                                (2) noise-only UNROLL=4  noise=0.01
 #                                (3) combined  UNROLL=16 noise=0.01
+#   MODE=combined            — single arm: UNROLL + TRAIN_NOISE_STD together
 #   MODE=custom              — use UNROLL / TRAIN_NOISE_STD env as-is
+#
+# Protocol (recommended):
+#   1) DEVICE=cuda SEEDS=42 MODE=matrix ./scripts/run_q1_pushforward.sh
+#   2) Expand seeds only on arm(s) that moved the needle
 #
 # Usage (GCP, repo root; tmux recommended):
 #   DEVICE=cuda SEEDS=42 ./scripts/run_q1_pushforward.sh
-#   DEVICE=cuda SEEDS=42 MODE=matrix ./scripts/run_q1_pushforward.sh
-#   DEVICE=cuda SEEDS="42 1337 2026" ./scripts/run_q1_pushforward.sh
+#   DEVICE=cuda SEEDS="42 1337 2026" MODE=combined ./scripts/run_q1_pushforward.sh
 # ==============================================================================
 
 set -euo pipefail
 
 EPOCHS="${EPOCHS:-100}"
 SEEDS="${SEEDS:-42}"
-MODE="${MODE:-combined}"
+MODE="${MODE:-matrix}"
 UNROLL="${UNROLL:-16}"
 TRAIN_NOISE_STD="${TRAIN_NOISE_STD:-0.01}"
 DEVICE="${DEVICE:-cuda}"
