@@ -17,6 +17,11 @@ PYTHON="${PYTHON:-python3}"
 ROLLOUT_STEPS="${ROLLOUT_STEPS:-29}"
 LOG_FILE="${LOG_FILE:-eval_logs/rdf_pilot_full.log}"
 
+# Prefer repo-root imports (same as `python -m koopman_evolver.cli`)
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${ROOT_DIR}"
+export PYTHONPATH="${ROOT_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
+
 mkdir -p "${OUT_ROOT}" "$(dirname "${LOG_FILE}")"
 LOG_FILE="$(cd "$(dirname "${LOG_FILE}")" && pwd)/$(basename "${LOG_FILE}")"
 
