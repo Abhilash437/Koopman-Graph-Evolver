@@ -27,6 +27,8 @@ def test_cli_train_loss_weight_overrides():
     assert args.lambda_collapse == 0.0
     assert args.lambda_iso == 0.0
     assert args.run_tag == "noreg"
+    assert args.unroll_steps == 4
+    assert args.train_noise_std == 0.0
     weights = resolve_loss_weights(
         lambda_dyn=args.lambda_dyn,
         lambda_recon=args.lambda_recon,
@@ -54,3 +56,15 @@ def test_cli_eval_parser():
     assert args.koopman_ckpt == "checkpoints/koopman.pt"
     assert args.gru_ckpt == "checkpoints/gru.pt"
     assert args.rollout_steps == 29
+
+
+def test_cli_gru_pushforward_flags():
+    parser = build_parser()
+    args = parser.parse_args([
+        "train", "--md17", "aspirin", "--model", "gru",
+        "--unroll-steps", "16", "--train-noise-std", "0.01",
+        "--run-tag", "pf16n01",
+    ])
+    assert args.unroll_steps == 16
+    assert args.train_noise_std == 0.01
+    assert args.run_tag == "pf16n01"

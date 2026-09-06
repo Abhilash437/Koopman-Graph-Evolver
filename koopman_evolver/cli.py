@@ -132,6 +132,18 @@ def build_parser():
         default=None,
         help="Optional suffix appended to checkpoint names (e.g. full, noreg)",
     )
+    train_parser.add_argument(
+        "--unroll-steps",
+        type=int,
+        default=4,
+        help="G-GRU only: latent pushforward horizon in L_dyn (paper default 4). Ignored for other models.",
+    )
+    train_parser.add_argument(
+        "--train-noise-std",
+        type=float,
+        default=0.0,
+        help="G-GRU only: Gaussian noise std added to latent state before pushforward (0=off).",
+    )
     
     # Eval command
     eval_parser = subparsers.add_parser("eval", help="Evaluate a trained model")
@@ -252,7 +264,13 @@ def train(args):
         model = GraphAwareGRUNet(
             edge_index=edge_index,
             node_dim=6, edge_dim=1, hidden_dim=args.hidden_dim, 
-            latent_dim=latent_dim, n_atoms=n_atoms
+            latent_dim=latent_dim, n_atoms=n_atoms,
+            unroll_steps=args.unroll_steps,
+            train_noise_std=args.train_noise_std,
+        )
+        print(
+            f"[{name}] G-GRU pushforward: unroll_steps={args.unroll_steps} "
+            f"train_noise_std={args.train_noise_std}"
         )
         ckpt_name = f"graph_aware_gru_{name}{seed_tag}{run_tag}_best.pt"
     elif args.model == "flat":

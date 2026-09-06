@@ -66,11 +66,25 @@ class GraphGRUNet(nn.Module):
 
 
 class GraphAwareGRUNet(nn.Module):
-    def __init__(self, edge_index, node_dim: int = 6, edge_dim: int = 1, hidden_dim: int = 64, latent_dim: int = 576, n_atoms: int = 9):
+    def __init__(
+        self,
+        edge_index,
+        node_dim: int = 6,
+        edge_dim: int = 1,
+        hidden_dim: int = 64,
+        latent_dim: int = 576,
+        n_atoms: int = 9,
+        unroll_steps: int = 4,
+        train_noise_std: float = 0.0,
+    ):
         super().__init__()
         self.latent_dim = latent_dim
         self.hidden_dim = hidden_dim
         self.n_atoms = n_atoms
+        # Paper G-GRU default: 4-step latent pushforward in L_dyn.
+        # Q1 ablations raise this (and optionally add latent noise) without touching KGE.
+        self.unroll_steps = int(unroll_steps)
+        self.train_noise_std = float(train_noise_std)
         self.encoder = GraphEncoder(node_dim=node_dim, edge_dim=edge_dim, hidden_dim=hidden_dim)
         self.decoder = GraphDecoder(state_dim=latent_dim, hidden_dim=128, n_atoms=n_atoms)
         self.msg_proj = nn.Linear(hidden_dim, hidden_dim, bias=False)
@@ -125,7 +139,8 @@ class GraphAwareGRUNet(nn.Module):
         h_seq = outputs
         B, T, n_atoms, hidden_dim = h_seq.shape
 
-        unroll_steps = 4
+        unroll_steps = max(1, int(getattr(self, "unroll_steps", 4)))
+        noise_std = float(getattr(self, "train_noise_std", 0.0))
 
         l_dyn = 0.0
         h_t_list = []
@@ -135,6 +150,8 @@ class GraphAwareGRUNet(nn.Module):
 
         if len(h_t_list) > 0:
             h_curr = torch.cat(h_t_list, dim=0)
+            if self.training and noise_std > 0.0:
+                h_curr = h_curr + noise_std * torch.randn_like(h_curr)
             for step in range(1, unroll_steps + 1):
                 h_curr = self.transition_step(h_curr)
                 tgt_list = []
@@ -199,6 +216,8 @@ class GraphAwareGRUNet(nn.Module):
             'l_iso': l_iso.item() if node_features is not None else 0.0,
             'lambda_collapse': w["collapse"],
             'lambda_iso': w["iso"],
+            'unroll_steps': float(unroll_steps),
+            'train_noise_std': float(noise_std),
             'alpha': float(self.alpha.item())
         }
 
