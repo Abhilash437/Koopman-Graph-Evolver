@@ -1,27 +1,26 @@
 #!/bin/bash
 # ==============================================================================
-# Q1 — G-GRU stabilizers: pushforward + training noise (no symplectic)
+# Q1 — G-GRU stabilizers: pushforward + training noise (no symplectic, no N-body)
 #
-# Paper G-GRU already uses unroll_steps=4 and noise=0. This script trains
-# G-GRU under the SAME full loss as KGE, with longer pushforward and/or
-# latent training noise, then evals bond/angle/torsion/R_norm/R_edge vs
-# existing KGE full checkpoints.
+# Trains G-GRU only under the SAME full loss as KGE. KGE full ckpts are reused
+# (not retrained). Covers paper MD17 + MD22 by default.
 #
 # Modes:
-#   MODE=matrix    (default) — three arms for attribution:
+#   MODE=matrix    (default) — three arms:
 #                                (1) pf-only   UNROLL=16 noise=0
 #                                (2) noise-only UNROLL=4  noise=0.01
 #                                (3) combined  UNROLL=16 noise=0.01
-#   MODE=combined            — single arm: UNROLL + TRAIN_NOISE_STD together
-#   MODE=custom              — use UNROLL / TRAIN_NOISE_STD env as-is
+#   MODE=combined            — single arm from UNROLL + TRAIN_NOISE_STD
+#   MODE=custom              — same as combined
 #
 # Protocol (recommended):
-#   1) DEVICE=cuda SEEDS=42 MODE=matrix ./scripts/run_q1_pushforward.sh
-#   2) Expand seeds only on arm(s) that moved the needle
+#   1) SEEDS=42 MODE=matrix across all MD17/MD22  (~36 GRU trains)
+#   2) Expand SEEDS="42 1337 2026" only on winning arm(s)  (MODE=combined/custom)
 #
-# Usage (GCP, repo root; tmux recommended):
+# Usage:
 #   DEVICE=cuda SEEDS=42 ./scripts/run_q1_pushforward.sh
-#   DEVICE=cuda SEEDS="42 1337 2026" MODE=combined ./scripts/run_q1_pushforward.sh
+#   DEVICE=cuda SEEDS="42 1337 2026" MODE=combined UNROLL=16 TRAIN_NOISE_STD=0.01 ./scripts/run_q1_pushforward.sh
+#   MOL=aspirin DEVICE=cuda SEEDS=42 ./scripts/run_q1_pushforward.sh   # single-mol override
 # ==============================================================================
 
 set -euo pipefail
@@ -32,12 +31,15 @@ MODE="${MODE:-matrix}"
 UNROLL="${UNROLL:-16}"
 TRAIN_NOISE_STD="${TRAIN_NOISE_STD:-0.01}"
 DEVICE="${DEVICE:-cuda}"
-BATCH_SIZE="${BATCH_SIZE:-32}"
-MOL="${MOL:-aspirin}"
+BATCH_MD17="${BATCH_MD17:-32}"
+BATCH_MD22="${BATCH_MD22:-16}"
+# MOL="" or unset => all paper MD17/MD22; else space-separated list
+MOL="${MOL:-}"
 CKPT_DIR="${CKPT_DIR:-./checkpoints/rebuttal_1LAu}"
 OUT_DIR="${OUT_DIR:-./results/rebuttal_q1}"
 LOG_FILE="${LOG_FILE:-eval_logs/rebuttal_q1_stabilizers.log}"
 SKIP_EXISTING="${SKIP_EXISTING:-1}"
+SKIP_MISSING_KGE="${SKIP_MISSING_KGE:-1}"
 KGE_TAG="${KGE_TAG:-full}"
 BASE_GRU_TAG="${BASE_GRU_TAG:-full}"
 INCLUDE_BASE_GRU="${INCLUDE_BASE_GRU:-1}"
@@ -51,6 +53,9 @@ export PYTHONUNBUFFERED=1
 # shellcheck disable=SC2206
 SEED_LIST=(${SEEDS})
 CLI=(${PYTHON} -u -m koopman_evolver.cli)
+
+MD17_ALL=(aspirin benzene ethanol malonaldehyde naphthalene salicylic toluene uracil)
+MD22_ALL=(stachyose ac-ala3-nhme dha at-at)
 
 mkdir -p "${CKPT_DIR}" "${OUT_DIR}" "$(dirname "${LOG_FILE}")"
 LOG_FILE="$(cd "$(dirname "${LOG_FILE}")" && pwd)/$(basename "${LOG_FILE}")"
@@ -74,20 +79,44 @@ make_tag() {
   fi
 }
 
-# Build list of (unroll,noise) pairs for this MODE
+is_md22() {
+  local mol="$1"
+  case "${mol}" in
+    stachyose|ac-ala3-nhme|dha|at-at|at-at-cg|buckyball-catcher|dw-nanotube) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Resolve molecule list: (dataset_flag, mol, batch)
+JOBS=()
+if [[ -n "${MOL}" ]]; then
+  # shellcheck disable=SC2206
+  MOL_LIST=(${MOL})
+  for mol in "${MOL_LIST[@]}"; do
+    if is_md22 "${mol}"; then
+      JOBS+=("--md22:${mol}:${BATCH_MD22}")
+    else
+      JOBS+=("--md17:${mol}:${BATCH_MD17}")
+    fi
+  done
+else
+  for mol in "${MD17_ALL[@]}"; do
+    JOBS+=("--md17:${mol}:${BATCH_MD17}")
+  done
+  for mol in "${MD22_ALL[@]}"; do
+    JOBS+=("--md22:${mol}:${BATCH_MD22}")
+  done
+fi
+
 ARMS=()
 case "${MODE}" in
-  combined)
+  combined|custom)
     ARMS+=("${UNROLL}:${TRAIN_NOISE_STD}")
     ;;
   matrix)
-    # Attribution: pushforward alone, noise alone, both
     ARMS+=("16:0.0")
     ARMS+=("4:0.01")
     ARMS+=("16:0.01")
-    ;;
-  custom)
-    ARMS+=("${UNROLL}:${TRAIN_NOISE_STD}")
     ;;
   *)
     echo "Unknown MODE=${MODE} (use combined|matrix|custom)"
@@ -96,17 +125,24 @@ case "${MODE}" in
 esac
 
 train_eval_arm() {
-  local unroll="$1"
-  local noise="$2"
-  local seed="$3"
+  local dataset_flag="$1"
+  local mol="$2"
+  local batch="$3"
+  local unroll="$4"
+  local noise="$5"
+  local seed="$6"
   local run_tag
   run_tag="$(make_tag "${unroll}" "${noise}")"
 
-  local gru_ckpt="${CKPT_DIR}/graph_aware_gru_${MOL}_seed${seed}_${run_tag}_best.pt"
-  local koop_ckpt="${CKPT_DIR}/graph_aware_koopman_${MOL}_seed${seed}_${KGE_TAG}_best.pt"
-  local base_gru="${CKPT_DIR}/graph_aware_gru_${MOL}_seed${seed}_${BASE_GRU_TAG}_best.pt"
+  local gru_ckpt="${CKPT_DIR}/graph_aware_gru_${mol}_seed${seed}_${run_tag}_best.pt"
+  local koop_ckpt="${CKPT_DIR}/graph_aware_koopman_${mol}_seed${seed}_${KGE_TAG}_best.pt"
+  local base_gru="${CKPT_DIR}/graph_aware_gru_${mol}_seed${seed}_${BASE_GRU_TAG}_best.pt"
 
   if [[ ! -f "${koop_ckpt}" ]]; then
+    if [[ "${SKIP_MISSING_KGE}" == "1" ]]; then
+      echo "SKIP missing KGE: ${koop_ckpt}"
+      return 0
+    fi
     echo "ERROR: missing KGE checkpoint ${koop_ckpt}"
     exit 1
   fi
@@ -115,13 +151,13 @@ train_eval_arm() {
     echo "SKIP train (exists): ${gru_ckpt}"
   else
     echo "------------------------------------------------------------"
-    echo " TRAIN G-GRU ${MOL} seed=${seed} tag=${run_tag} unroll=${unroll} noise=${noise}"
+    echo " TRAIN G-GRU ${dataset_flag} ${mol} seed=${seed} tag=${run_tag} unroll=${unroll} noise=${noise}"
     echo "------------------------------------------------------------"
     "${CLI[@]}" train \
-      --md17 "${MOL}" \
+      ${dataset_flag} "${mol}" \
       --model gru \
       --epochs "${EPOCHS}" \
-      --batch-size "${BATCH_SIZE}" \
+      --batch-size "${batch}" \
       --seed "${seed}" \
       --device "${DEVICE}" \
       --out-dir "${CKPT_DIR}" \
@@ -135,25 +171,24 @@ train_eval_arm() {
   fi
 
   echo "------------------------------------------------------------"
-  echo " EVAL KGE(${KGE_TAG}) vs G-GRU(${run_tag}) seed=${seed}"
+  echo " EVAL KGE(${KGE_TAG}) vs G-GRU(${run_tag}) ${mol} seed=${seed}"
   echo "------------------------------------------------------------"
   "${CLI[@]}" eval \
-    --md17 "${MOL}" \
+    ${dataset_flag} "${mol}" \
     --koopman-ckpt "${koop_ckpt}" \
     --gru-ckpt "${gru_ckpt}" \
     --device "${DEVICE}" \
     --rollout-steps 29 \
-    --out-dir "${OUT_DIR}/${MOL}_${run_tag}/seed${seed}"
+    --out-dir "${OUT_DIR}/${mol}_${run_tag}/seed${seed}"
 
   if [[ "${INCLUDE_BASE_GRU}" == "1" && -f "${base_gru}" && "${BASE_GRU_TAG}" != "${run_tag}" ]]; then
-    # Reference eval once per seed (paper GRU), not once per arm
-    local ref_dir="${OUT_DIR}/${MOL}_${BASE_GRU_TAG}_ref/seed${seed}"
+    local ref_dir="${OUT_DIR}/${mol}_${BASE_GRU_TAG}_ref/seed${seed}"
     if [[ ! -d "${ref_dir}" ]]; then
       echo "------------------------------------------------------------"
-      echo " EVAL reference: KGE(${KGE_TAG}) vs paper G-GRU(${BASE_GRU_TAG}) seed=${seed}"
+      echo " EVAL reference: KGE(${KGE_TAG}) vs paper G-GRU(${BASE_GRU_TAG}) ${mol} seed=${seed}"
       echo "------------------------------------------------------------"
       "${CLI[@]}" eval \
-        --md17 "${MOL}" \
+        ${dataset_flag} "${mol}" \
         --koopman-ckpt "${koop_ckpt}" \
         --gru-ckpt "${base_gru}" \
         --device "${DEVICE}" \
@@ -165,32 +200,40 @@ train_eval_arm() {
 
 echo "====================================================="
 echo " Q1 G-GRU stabilizers — pushforward + training noise"
-echo " MODE=${MODE} MOL=${MOL} SEEDS=${SEEDS} EPOCHS=${EPOCHS}"
-echo " DEVICE=${DEVICE} (no symplectic)"
+echo " MODE=${MODE} SEEDS=${SEEDS} EPOCHS=${EPOCHS} DEVICE=${DEVICE}"
+echo " Molecules (${#JOBS[@]}):"
+for job in "${JOBS[@]}"; do
+  echo "   ${job}"
+done
 echo " Arms:"
 for arm in "${ARMS[@]}"; do
   u="${arm%%:*}"
   n="${arm##*:}"
   echo "   - $(make_tag "${u}" "${n}")  (unroll=${u}, noise=${n})"
 done
-echo " vs KGE tag=${KGE_TAG} (existing; not retrained)"
+echo " Train G-GRU only; KGE tag=${KGE_TAG} reused. No N-body / no symplectic."
+echo " Approx jobs: $((${#JOBS[@]} * ${#SEED_LIST[@]} * ${#ARMS[@]})) GRU trains"
 echo "====================================================="
 
-for seed in "${SEED_LIST[@]}"; do
-  for arm in "${ARMS[@]}"; do
-    u="${arm%%:*}"
-    n="${arm##*:}"
-    train_eval_arm "${u}" "${n}" "${seed}"
+for job in "${JOBS[@]}"; do
+  dataset_flag="${job%%:*}"
+  rest="${job#*:}"
+  mol="${rest%%:*}"
+  batch="${rest##*:}"
+  for seed in "${SEED_LIST[@]}"; do
+    for arm in "${ARMS[@]}"; do
+      u="${arm%%:*}"
+      n="${arm##*:}"
+      train_eval_arm "${dataset_flag}" "${mol}" "${batch}" "${u}" "${n}" "${seed}"
+    done
   done
 done
 
 echo "====================================================="
 echo " Q1 stabilizer sweep done."
-echo " Results under ${OUT_DIR}/${MOL}_*/seed*/"
+echo " Results under ${OUT_DIR}/<mol>_<tag>/seed*/"
 echo " Log: ${LOG_FILE}"
 echo ""
-echo " Decision guide (vs KGE full on bond/angle/torsion/R_norm):"
-echo "   A) combined (pf+noise) closes most of the gap -> SO(n) not uniquely necessary"
-echo "   B) gap shrinks but KGE still wins -> SO(n) still adds something under this protocol"
-echo "   C) little change -> try UNROLL=29 or MODE=matrix if you only ran combined"
+echo " Next: download log, pick winning arm(s), then expand seeds, e.g."
+echo "   DEVICE=cuda SEEDS=\"42 1337 2026\" MODE=combined UNROLL=16 TRAIN_NOISE_STD=0.01 ./scripts/run_q1_pushforward.sh"
 echo "====================================================="
