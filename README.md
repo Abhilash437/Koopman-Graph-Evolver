@@ -1,6 +1,6 @@
 # Beyond MSE: Orthogonal Latent Dynamics for Long-Horizon Graph Simulation
 
-Official implementation of **"Beyond MSE: Geometry-Preserving Latent Dynamics for Long-Horizon Graph Simulation"** (title kept for citation continuity). Track B honesty: the reported model is Kronecker **GraphAwareKoopmanNet** (`K_glob`). Legacy `GraphKoopmanNet` (node-wise 64×64) is **not CLI-wired and not the paper**.
+Official implementation of **"Beyond MSE: Orthogonal Latent Dynamics for Long-Horizon Graph Simulation"**. The reported model is Kronecker **GraphAwareKoopmanNet** (`K_glob`). Legacy `GraphKoopmanNet` (node-wise 64×64) is **not CLI-wired and not the paper**.
 
 ---
 

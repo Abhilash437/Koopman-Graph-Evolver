@@ -1,8 +1,7 @@
 """
 Koopman Graph Evolver (koopman-evolver)
 ========================================
-Geometry-Preserving Latent Dynamics & SE(3)-Equivariant Koopman Operators
-for Long-Horizon Graph Simulation.
+Beyond MSE: Orthogonal Latent Dynamics for Long-Horizon Graph Simulation.
 """
 
 from .models import (

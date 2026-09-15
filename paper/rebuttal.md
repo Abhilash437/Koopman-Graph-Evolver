@@ -1,5 +1,5 @@
 # Author Rebuttal — Submission 39
-**"Beyond MSE: Geometry-Preserving Latent Dynamics for Long-Horizon Graph Simulation"**
+**"Beyond MSE: Orthogonal Latent Dynamics for Long-Horizon Graph Simulation"**
 
 We thank all three reviewers for their constructive and rigorous evaluations. Reviewer **vp7p** recognized the paper's clarity, topology-grounded metrics beyond MSE, and geometry-preserving latent transitions (**Accept, 8/10**). We thank Reviewer **1LAu** (**Rating 4**) for architectural clarification, loss formalization, numerical standardization, and the critical $\mathcal{L}_{\text{collapse}}$/$\mathcal{L}_{\text{iso}}$ attribution question. We thank Reviewer **t7BM** (**Rating 4**) for pressing on claim precision (W6), alternative stabilizers, and distributional probes. All requested clarifications and new experiments are incorporated into the revised manuscript (Appendices **C–F**).
 
