@@ -628,6 +628,25 @@ The standard evaluation metric $\rho(\K_{\text{global}})$ reports the spectral r
 \section{Full Per-System Results}
 \label{app:full_results}
 
+% NEED_LOG (Mac; do not invent). Sweep/multiseed bytes are not on this VM.
+%   eval_logs/sweep_20260716_161829.txt  OR  results/sweep_20260716_161829.txt
+%   eval_logs/multiseed_results.txt (prior copy truncated mid-springs seed 42)
+%   eval_logs/multiseed_results_nbody.txt (seeds 42, 1337)
+%   eval_logs/multiseed_results_nbody_2026.txt (seed 2026)
+% Unpasted P1 MSE from NUMBERS-BIBLE-VERIFY sweep excerpts only:
+%   aspirin Graph Koopman 0.2411 → 0.2350 (sweep L249 0.234992)
+%   AT-AT Graph GRU 2.6246 → 3.2551 (sweep L3257 3.255117)
+%   springs Graph Koopman 0.1764 → 0.1788 (sweep L3757 0.178751)
+%   springs Graph GRU 0.0531 → 0.0256 (sweep L3758 0.025578)
+% Remaining P1 MSE that still equal Table 2 P3 means (await full sweep file):
+%   aspirin Flat 0.0715, aspirin G-GRU 0.1388
+%   malonaldehyde 0.4002 / 0.9151 / 0.3532
+%   at-at Flat 3.6341, at-at Graph Koopman 6.2917
+%   springs Flat 0.1756
+% NEED_LOG Coord R_edge: Phase-9 prints latent-norm ratio, not coord R_edge.
+% NEED_LOG Wilcoxon pairing grid: P3 vs P1 unknown.
+% NEED_LOG App D noreg: eval_logs/rebuttal_1LAu_aspirin.log, rebuttal_1LAu_expand.log
+
 We report parameter counts and rollout metrics for Flat Koopman, Graph Koopman, and Graph GRU across 14 systems. Table~\ref{tab:app_params} is parameter scaling. Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22} are \textbf{P1} single-seed sweep cells (not P3 means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT.
 
 \begin{table}[h]
@@ -658,7 +677,7 @@ n-body (springs) & 467,151 & 93,264 & 114,128 \\
 
 \begin{table}[htbp]
 \centering
-\caption{Single-seed sweep (P1) from \texttt{sweep\_20260716\_161829}: MD17 systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Colliding cells with Table~\ref{tab:multiseed} (P3) are expected. Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. $R_{\text{edge}}$ is relative to decoded $t=0$.}
+\caption{Single-seed sweep (P1) from \texttt{sweep\_20260716\_161829}: MD17 systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Colliding cells with Table~\ref{tab:multiseed} (P3) are expected. Aspirin Graph-Koopman MSE $0.2350$ is the sweep cell (not the P3 mean $0.2411$). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. $R_{\text{edge}}$ is relative to decoded $t=0$.}
 \label{tab:app_results_md17}
 \resizebox{\textwidth}{!}{
 \begin{tabular}{llrrrrrr}
@@ -702,7 +721,7 @@ n-body (springs) & 467,151 & 93,264 & 114,128 \\
 
 \begin{table}[htbp]
 \centering
-\caption{Single-seed sweep (P1) from \texttt{sweep\_20260716\_161829}: MD22 and N-body systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Colliding cells with Table~\ref{tab:multiseed} (P3) are expected. Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. $R_{\text{edge}}$ is relative to decoded $t=0$.}
+\caption{Single-seed sweep (P1) from \texttt{sweep\_20260716\_161829}: MD22 and N-body systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Colliding cells with Table~\ref{tab:multiseed} (P3) are expected. AT-AT Graph-GRU MSE $3.2551$ and springs MSE $0.1788$/$0.0256$ are sweep cells (not P3 means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. $R_{\text{edge}}$ is relative to decoded $t=0$.}
 \label{tab:app_results_md22}
 \resizebox{\textwidth}{!}{
 \begin{tabular}{llrrrrrr}
