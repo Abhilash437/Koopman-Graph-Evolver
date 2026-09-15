@@ -1,7 +1,14 @@
 """Shared multi-task loss weight defaults and helpers.
 
-Paper defaults (Eq. total loss):
+Paper defaults (Eq. total loss), fixed (no annealed lambda):
   L = 10.0 * L_recon + 1.0 * L_dyn + 2.0 * L_collapse + 5.0 * L_iso
+
+Term meanings (GraphAwareKoopmanNet.compute_loss):
+  L_recon: teacher-forced AE (encode current -> decode -> same-timestep coords)
+  L_dyn: one-step latent consistency (K s_t vs encoder s_{t+1})
+  L_collapse: encoder anti-freeze hinge; does not train R_norm
+  L_iso: bonded-distance MSE on decoded coords; does push bond margins
+  Delta t is implicit 1 (K = exp(A_glob); not a physical integrator step).
 """
 
 from __future__ import annotations

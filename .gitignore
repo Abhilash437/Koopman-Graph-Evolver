@@ -19,7 +19,9 @@
 /NBody
 /scratch
 /SEGNO
-/paper
+# Track manuscript source under paper/; ignore compiled PDFs and OS junk.
+paper/**/*.pdf
+paper/**/.DS_Store
 /eval_logs
 dist/
 build/

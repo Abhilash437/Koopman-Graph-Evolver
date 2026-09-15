@@ -26,6 +26,19 @@ Evaluated across **14 physical systems** (8 MD17 molecules, 4 MD22 macromolecule
 
 ---
 
+## Training objective (matches `compute_loss`)
+
+Default weights are **fixed** at **10 / 1 / 2 / 5** (reconstruction / dynamics / collapse / iso). There is no annealed λ.
+
+- **Reconstruction:** teacher-forced autoencoder — encode the current graph, decode, score vs the **same-timestep** coordinates. Not next-frame prediction.
+- **Dynamics:** one-step latent consistency (`K s_t` vs encoder `s_{t+1}`).
+- **Collapse:** encoder anti-freeze hinge. Does **not** train `R_norm`.
+- **Iso:** bonded-distance MSE on decoded coordinates; this term **does** push bond / bond-margin numbers.
+- **`R_norm`:** architectural `SO(n)` from `K = exp(A_glob)` with implicit `Δt = 1` (not a physical integrator step). Collapse does not enforce it.
+- Bond / angle / torsion eval scores in `physics_eval.py` are **drift from decoded t=0**, not vs ground-truth topology.
+
+---
+
 ## Empirical Benchmark Results (14 Physical Systems)
 
 ### 1. Multi-Seed Robustness (Averaged Over Seeds {42, 1337, 2026})

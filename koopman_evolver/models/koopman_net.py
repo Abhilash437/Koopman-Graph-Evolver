@@ -141,6 +141,14 @@ class GraphAwareKoopmanNet(nn.Module):
     def get_global_K(self):
         return self.K_global.detach().cpu().numpy()
     def compute_loss(self, outputs, targets, lengths, epoch, node_features=None):
+        """Multi-task loss matching paper Eq. (total loss).
+
+        L = 10*L_recon + 1*L_dyn + 2*L_collapse + 5*L_iso (fixed weights; ``epoch`` unused).
+        L_recon: teacher-forced AE (encode current -> decode -> same-timestep coords).
+        L_dyn: one-step latent consistency (K s_t vs encoder s_{t+1}).
+        L_collapse: encoder anti-freeze hinge; does not train R_norm.
+        L_iso: bonded-distance MSE on decoded coords.
+        """
         h_seq = outputs  # (B, T, n_atoms, hidden_dim)
         B, T, n_atoms, hidden_dim = h_seq.shape
 

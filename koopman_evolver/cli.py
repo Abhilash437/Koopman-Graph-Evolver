@@ -112,19 +112,19 @@ def build_parser():
         "--lambda-recon",
         type=float,
         default=DEFAULT_LOSS_WEIGHTS["recon"],
-        help="Weight for coordinate reconstruction loss (default: 10.0)",
+        help="Weight for teacher-forced AE reconstruction (encode current → decode → same-timestep coords; default: 10.0)",
     )
     train_parser.add_argument(
         "--lambda-collapse",
         type=float,
         default=DEFAULT_LOSS_WEIGHTS["collapse"],
-        help="Weight for anti-collapse hinge loss (default: 2.0; set 0 to disable)",
+        help="Weight for encoder anti-freeze hinge (default: 2.0; set 0 to disable; does not train R_norm)",
     )
     train_parser.add_argument(
         "--lambda-iso",
         type=float,
         default=DEFAULT_LOSS_WEIGHTS["iso"],
-        help="Weight for isometric bond-distance loss (default: 5.0; set 0 to disable)",
+        help="Weight for isometric bonded-distance MSE (default: 5.0; set 0 to disable)",
     )
     train_parser.add_argument(
         "--run-tag",
