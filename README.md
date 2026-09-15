@@ -36,9 +36,9 @@ Default weights are **fixed** at **10 / 1 / 2 / 5** (reconstruction / dynamics /
 
 ## Empirical Benchmark Results (14 Physical Systems)
 
-### 1. Multi-seed robustness (seeds {42, 1337, 2026})
+### 1. Multi-seed robustness (P3, seeds {42, 1337, 2026})
 
-Bond / angle / torsion = **decoded t=0 drift**, not vs GT. Baselines are **not** an identical-objective bake-off (G-GRU uses 4-step dyn unroll; Flat-K drops iso). B5 TODO: 3-seed table vs appendix single-seed sweep collisions.
+Bond / angle / torsion = **decoded t=0 drift**, not vs GT. Baselines are **not** an identical-objective bake-off (G-GRU uses 4-step dyn unroll; Flat-K drops iso). **P3** = Table 2 3-seed aggregate; **P1** = appendix single-seed sweep (`sweep_20260716_161829`) — do not cite P1 cells as multi-seed means. Springs MSE is recomputed from nbody twins (`multiseed_results_nbody*.txt`; sample std). Old headline `0.0531±0.0015` is retired.
 
 | System | Model | Rollout MSE (29-step) | Bond Drift (Å) | Angle Drift (°) | Torsion Drift (°) | Physical Coord Edge Ratio ($R_{\text{edge}}$) |
 |:---|:---|:---:|:---:|:---:|:---:|:---:|
@@ -52,12 +52,12 @@ Bond / angle / torsion = **decoded t=0 drift**, not vs GT. Baselines are **not**
 | | **Graph Koopman** | 6.2917 ± 0.514 | **0.0240 ± 0.010** | **0.63 ± 0.26** | **1.15 ± 0.48** | **0.9868** |
 | | Graph GRU | 2.6390 ± 0.158 | 0.2514 ± 0.038 | 17.98 ± 1.96 | 26.37 ± 3.13 | 0.8675 |
 | **springs** | Flat Koopman | 0.1756 ± 0.001 | 0.1075 ± 0.026 | 14.55 ± 2.87 | 29.38 ± 5.56 | 0.9827 |
-| | **Graph Koopman** | 0.1764 ± 0.003 | **0.0248 ± 0.009** | **2.59 ± 1.01** | **6.05 ± 1.79** | **1.0112** |
-| | Graph GRU | 0.0531 ± 0.002 | 0.6167 ± 0.013 | 46.51 ± 0.87 | 80.21 ± 0.95 | 1.6290 |
+| | **Graph Koopman** | 0.1768 ± 0.003 | **0.0248 ± 0.009** | **2.59 ± 1.01** | **6.05 ± 1.79** | **1.0112** |
+| | Graph GRU | 0.0455 ± 0.0185 | 0.6167 ± 0.013 | 46.51 ± 0.87 | 80.21 ± 0.95 | 1.6290 |
 
 ### 2. Statistical Significance Across All 14 Systems
 
-One-sided Wilcoxon on **decoded t=0 drift** (KGE vs G-GRU). Not a proof of physical superiority. MSE is often lower for G-GRU.
+One-sided Wilcoxon on **decoded t=0 drift** (KGE vs G-GRU). Not a proof of physical superiority. MSE is often lower for G-GRU. **Caveat:** available logs do not name whether the pairing used P3 means or P1 sweep cells; p-values are as previously reported and are not recomputed.
 
 | Metric | KGE Win Rate | Wilcoxon Statistic | p-value |
 |:---|:---:|:---:|:---:|
