@@ -30,10 +30,10 @@ except ImportError:
 
 class GraphKoopmanNet(nn.Module):
     """
-    OBSOLETE: Legacy Koopman dynamics model from Experiment 3.
-    This class operates directly on GNN node embeddings without explicit physical constraints.
-    It is superseded by `GraphAwareKoopmanNet` which strictly enforces pairwise distances
-    and graph energy conservation during the latent rollout.
+    NOT THE PAPER MODEL. Legacy Experiment-3 cell: a single shared 64×64
+    node-wise matrix exponential. Not CLI-wired. Reported runs use
+    GraphAwareKoopmanNet (Kronecker K_glob). Do not cite this class for
+    paper tables. Does not conserve physical energy.
     """
     def __init__(self, node_dim: int = 6, edge_dim: int = 1, hidden_dim: int = 64, latent_dim: int = 576, n_atoms: int = 9):
         super().__init__()
@@ -70,9 +70,7 @@ class GraphKoopmanNet(nn.Module):
 
 
 class GraphAwareKoopmanNet(nn.Module):
-    """
-    Graph-Aware Koopman dynamics model with learnable coupling parameter alpha.
-    """
+    """Reported KGE: Kronecker GraphAware K_glob (not dense Nd×Nd, not legacy 64×64)."""
     def __init__(self, edge_index, node_dim: int = 6, edge_dim: int = 1, hidden_dim: int = 64, latent_dim: int = 576, n_atoms: int = 9):
         super().__init__()
         self.latent_dim = latent_dim

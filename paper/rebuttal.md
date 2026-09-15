@@ -13,7 +13,7 @@ We thank all three reviewers for their constructive and rigorous evaluations. Re
 
 **Response:** We agree ideal retention $=1.0$. On MD22 DHA, SEGNO attains marginally closer pairwise coordinate retention ($\approx 0.982$ vs. $\approx 0.970$ for E-GKN) via steerable harmonic message passing and bond-distance features. E-GKN achieves lower cumulative rollout MSE and bounds latent collapse ($\rho(K)=1.0$) by construction without engineered edge features.
 
-**Revision:** We updated the Fig. 2 caption and Sec. 4.8 to describe all four subplots and this complementary trade-off: Top = rollout MSE (E-GKN lower cumulative error); rows 2–4 = pairwise coordinate / node-embedding / graph-energy ratios (ideal $=1.0$).
+**Revision:** Fig. 2 caption and Sec. 4.8: top = rollout MSE; rows 2–4 = pairwise coordinate / node-embedding / **latent-norm** ratios (not physical energy; DHA-only subplot, not a 14-system energy table).
 
 ### Q2: Equations for Latent Collapse & Coordinate Retention
 
@@ -77,7 +77,7 @@ Tuned on aspirin/DHA validation (LR $\{10^{-4},5\times 10^{-4},10^{-3},2\times 1
 
 Manuscript updates: (i) abstract + Contribution 3 drop “structural-energy”; (ii) Appendix D noreg ablation; (iii) Appendix E G-GRU pushforward/noise; (iv) Appendix F RDF pilot.
 
-**W1.** Scope is a temporal inductive bias on standard MD17/MD22/$N$-body rollouts, not a new domain finding. Liouville motivates $SO(n)$; $K$ is not claimed symplectic in decoded space.
+**W1.** Scope is a temporal inductive bias on standard MD17/MD22/$N$-body rollouts, not a new domain finding. $SO(n)$ is a latent-cell constraint (Remark 1); we do not claim Liouville/Hamiltonian decoded mechanics.
 
 **W2.** Higher KGE MSE is the stated MSE paradox; primary claims are bond/angle/torsion / $R_{\text{norm}}$ / $R_{\text{edge}}$. SEGNO is Sec. 4.8 (MD22 subset). Stabilizers: Appendix E / Q1.
 
@@ -87,7 +87,7 @@ Manuscript updates: (i) abstract + Contribution 3 drop “structural-energy”; 
 
 **W5.** Agreed: Theorem 1 is latent-only (Limitation 1); decoded bond/angle/torsion gains are empirical.
 
-**W6.** “Structural-energy drift” was unsupported. Wilcoxon Table 1 covers bond, angle, torsion, and $|R_{\text{norm}}-1|$ only; Fig. 2 graph-energy is DHA-only and cannot support a 14-system energy claim. Wording now matches Table 1.
+**W6.** “Structural-energy drift” was unsupported. Wilcoxon Table 1 covers bond, angle, torsion, and $|R_{\text{norm}}-1|$ only; Fig. 2 row 4 is a DHA **latent-norm** subplot and cannot support a 14-system energy claim.
 
 **Loss ablation.** Same as 1LAu / Appendix D: under noreg, structural metrics largely still favor KGE; MSE favors G-GRU.
 

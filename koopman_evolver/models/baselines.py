@@ -29,12 +29,7 @@ except ImportError:
 
 
 class GraphGRUNet(nn.Module):
-    """
-    OBSOLETE: Legacy GRU dynamics baseline from Experiment 3.
-    This class operates directly on GNN node embeddings without explicit physical constraints.
-    It is superseded by `GraphAwareGRUNet` which strictly enforces pairwise distances
-    and graph energy conservation during the latent rollout for fair comparison.
-    """
+    """NOT THE PAPER GRU. Legacy Experiment-3 cell; not CLI-wired. Use GraphAwareGRUNet."""
     def __init__(self, node_dim: int = 6, edge_dim: int = 1, hidden_dim: int = 64, latent_dim: int = 576, n_atoms: int = 9):
         super().__init__()
         self.latent_dim = latent_dim

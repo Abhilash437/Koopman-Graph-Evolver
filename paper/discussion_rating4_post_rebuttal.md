@@ -6,7 +6,7 @@ We thank the reviewer for the post-rebuttal update and for highlighting W6 and t
 
 ## W6 — “structural-energy drift”
 
-We agree the previous phrasing was unsupported. Wilcoxon Table 1 covers bond, angle, torsion, and `|R_norm−1|` only. No Hamiltonian/potential-energy drift is defined in Sec. 4.1 or tabulated in Tables 2/7/8. Fig. 2 graph-energy is an illustrative DHA retention plot and cannot support a 14-system energy claim. The manuscript now matches Table 1: bond, angle, torsion, and latent-norm-ratio metrics.
+We agree the previous phrasing was unsupported. Wilcoxon Table 1 covers bond, angle, torsion, and `|R_norm−1|` only. No Hamiltonian/potential-energy drift is defined in Sec. 4.1 or tabulated in Tables 2/7/8. Fig. 2 row 4 is a DHA **latent-norm** subplot and cannot support a 14-system energy claim. The manuscript now matches Table 1: bond, angle, torsion, and latent-norm-ratio metrics.
 
 ## Loss ablation (`L_collapse`, `L_iso`)
 
@@ -16,7 +16,7 @@ Headline: under noreg, aspirin KGE drifts rise vs full loss (bond 0.0045→0.015
 
 ## W1 — scope / physics motivation
 
-We agree the paper studies a temporal-transition inductive bias on standard MD17/MD22/N-body rollouts, not a new dataset or domain finding. Liouville/volume language motivates `SO(n)`. The manuscript already caveats that `K` is not a symplectic map of the decoded dynamics; orthogonality is a latent structural constraint.
+We agree the paper studies a temporal-transition inductive bias on standard MD17/MD22/N-body rollouts, not a new dataset or domain finding. `SO(n)` is a **latent** constraint (not Liouville/Hamiltonian decoded mechanics).
 
 ## W2 — MSE, SEGNO, alternative stabilizers
 

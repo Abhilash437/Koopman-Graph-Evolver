@@ -1,28 +1,23 @@
-# Beyond MSE: Geometry-Preserving Latent Dynamics for Long-Horizon Graph Simulation
+# Beyond MSE: Orthogonal Latent Dynamics for Long-Horizon Graph Simulation
 
-Official implementation of the paper **"Beyond MSE: Geometry-Preserving Latent Dynamics for Long-Horizon Graph Simulation"**.
-
----
-
-## Executive Summary & Abstract
-
-Graph neural networks (GNNs) achieve high short-horizon accuracy for physical simulation, yet accumulate severe latent drift over long-horizon autoregressive rollouts. Unconstrained temporal transitions (e.g., GRUs) allow latent representation norms to progressively expand or contract, producing trajectories with competitive pointwise rollout MSE despite catastrophic physical structural breakdown (bond stretching, angle distortion, and centroid collapse).
-
-We introduce the **Koopman Graph Evolver (KGE)** and its SE(3)-equivariant extension **E-GKN**, which replace unconstrained recurrent transitions with an orthogonal Koopman operator acting in latent space. Parameterizing the transition via a matrix exponential $K = \exp(A_{\text{skew}} \Delta t)$ guarantees $K \in \text{SO}(n)$, preserving latent norm and volume by construction ($R_{\text{norm}} = 1.0000$).
-
-Evaluated across **14 physical systems** (8 MD17 molecules, 4 MD22 macromolecules, and 2 N-body particle systems), geometry-preserving latent transitions yield statistically significant reductions in structural drift ($p \le 3.1 \times 10^{-4}$, Wilcoxon signed-rank test), maintaining physical coordinate edge length ratios ($R_{\text{edge}} \approx 1.0$) across extended rollouts.
+Official implementation of **"Beyond MSE: Geometry-Preserving Latent Dynamics for Long-Horizon Graph Simulation"** (title kept for citation continuity). Track B honesty: the reported model is Kronecker **GraphAwareKoopmanNet** (`K_glob`). Legacy `GraphKoopmanNet` (node-wise 64×64) is **not CLI-wired and not the paper**.
 
 ---
 
-## Key Contributions & Mathematical Framework
+## Executive summary
 
-1. **Characterization of Structural Drift & The MSE Paradox:** We show that standard rollout MSE fails to reflect physical degradation, rewarding models that expand uniformly or collapse toward spatial centroids. Physical topology metrics (bond, angle, torsion drift, and coordinate edge ratios) are required for faithful physical evaluation.
-2. **Volume-Preserving Koopman Transitions:** Enforcing $K = \exp(A_{\text{skew}} \Delta t) \in \text{SO}(n)$ guarantees:
-   - $K^T K = I$ (Orthogonality)
-   - $\det(K) = 1$ (Orientation and volume preservation)
-   - $\|Kz\|_2 = \|z\|_2$ (Norm preservation in latent feature space)
-3. **Physical Regularization in 3D Space:** While the non-linear spatial decoder does not mathematically mandate 3D coordinate edge ratios $R_{\text{edge}} = 1.0$ identically, latent orthogonality strongly regularizes spatial decoding, keeping $R_{\text{edge}} \approx 1.0$ ($0.9416$–$1.0112$) across extended rollouts.
-4. **SE(3)-Equivariant Extension (E-GKN):** Augmenting equivariant message passing with shared node-local Koopman transitions prevents numerical divergence ($10^{27}$ / NaNs) present in standard EGNNs on large flexible macromolecules.
+GNNs can keep one-step error low while decoded topology degrades over autoregressive rollouts (MSE-versus-topology). **KGE** replaces an unconstrained recurrent cell with `K = exp(A_skew) ∈ SO(n)` (implicit `Δt = 1`). That constrains **latent** norm/volume; it is **not** energy conservation, Liouville mechanics, or decoded-bond preservation by construction.
+
+Bond / angle / torsion in the tables below are **drift from decoded t=0**, not vs ground-truth topology. Bonded margins are also trained by an iso loss (weights **10 / 1 / 2 / 5**). Across 14 systems we report a stability–accuracy tradeoff: lower t=0 drift vs G-GRU, often **higher** MSE. E-GKN vs EGNN is empirical under this protocol.
+
+---
+
+## Key points (matches code)
+
+1. **MSE-versus-topology:** rollout MSE can miss decoded t=0 bond/angle/torsion drift.
+2. **SO(n) is latent-only:** `K^T K = I`, `det(K)=1`, `||Kz||_2 = ||z||_2` in latent space (Theorem 1). Decoder geometry is empirical.
+3. **Iso trains bonds.** `R_edge ≈ 1` is not mandated by SO(n) alone.
+4. **E-GKN** uses the same Kronecker `K_glob` on invariant features (not independent node-local cells). Finite rollouts vs EGNN overflow are a protocol result, not physical energy.
 
 ---
 
@@ -41,7 +36,9 @@ Default weights are **fixed** at **10 / 1 / 2 / 5** (reconstruction / dynamics /
 
 ## Empirical Benchmark Results (14 Physical Systems)
 
-### 1. Multi-Seed Robustness (Averaged Over Seeds {42, 1337, 2026})
+### 1. Multi-seed robustness (seeds {42, 1337, 2026})
+
+Bond / angle / torsion = **decoded t=0 drift**, not vs GT. Baselines are **not** an identical-objective bake-off (G-GRU uses 4-step dyn unroll; Flat-K drops iso). B5 TODO: 3-seed table vs appendix single-seed sweep collisions.
 
 | System | Model | Rollout MSE (29-step) | Bond Drift (Å) | Angle Drift (°) | Torsion Drift (°) | Physical Coord Edge Ratio ($R_{\text{edge}}$) |
 |:---|:---|:---:|:---:|:---:|:---:|:---:|
@@ -60,7 +57,7 @@ Default weights are **fixed** at **10 / 1 / 2 / 5** (reconstruction / dynamics /
 
 ### 2. Statistical Significance Across All 14 Systems
 
-One-sided Wilcoxon signed-rank test results comparing Graph Koopman (KGE) vs. Graph GRU (G-GRU) across 14 physical systems:
+One-sided Wilcoxon on **decoded t=0 drift** (KGE vs G-GRU). Not a proof of physical superiority. MSE is often lower for G-GRU.
 
 | Metric | KGE Win Rate | Wilcoxon Statistic | p-value |
 |:---|:---:|:---:|:---:|
@@ -108,7 +105,7 @@ model = GraphAwareKoopmanNet(
     n_atoms=3
 )
 
-# 3. Perform volume-preserving long-horizon rollout
+# 3. Perform SO(n) latent rollout (decoded geometry is empirical)
 h0 = torch.randn(1, 5, 3, 64)  # Initial trajectory (B, T, N, D)
 rollout = model.forward_rollout(h0, steps=30)
 

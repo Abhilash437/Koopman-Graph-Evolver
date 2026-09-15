@@ -73,7 +73,7 @@ Long-Horizon Graph Simulation}
 % ============================================================
 \begin{abstract}
 % ============================================================
-Graph neural networks for physical simulation achieve high one-step accuracy, yet often accumulate latent drift over long-horizon autoregressive rollouts. We investigate whether constraining latent temporal evolution to preserve geometry can mitigate this failure mode. Unconstrained temporal transitions allow latent representations to progressively expand or contract, producing trajectories with competitive rollout error despite severe degradation of physical structure. We introduce the Koopman Graph Evolver (KGE), which replaces unconstrained temporal evolution with an orthogonal Koopman operator acting in latent space. Parameterizing the transition as $\mathbf{K}=\exp(\mathbf{A}_{\mathrm{skew}})$ (implicit $\Delta t=1$; not a physical integrator step) guarantees $\mathbf{K}\in SO(n)$, preserving latent norm and latent volume by construction and thereby preventing unbounded latent drift. Across 14 physical dynamical systems spanning MD17, MD22, and N-body simulations, KGE yields statistically significant improvements in long-horizon structural stability, reducing bond-length, angle, and torsion drift and keeping the latent norm ratio closer to one compared with unconstrained recurrent baselines (Wilcoxon signed-rank test; $p \le 3.1 \times 10^{-4}$). An equivariant extension (E-GKN) further improves rollout accuracy over EGNN baselines on challenging molecular systems. These results suggest that geometry-preserving latent dynamics constitute an effective inductive bias for improving long-horizon stability in graph dynamical systems.\end{abstract}
+Graph neural networks for physical simulation often keep one-step error low while decoded topology degrades over autoregressive rollouts: rollout MSE can remain competitive even as bonds and angles drift (an MSE-versus-topology diagnostic). We introduce the Koopman Graph Evolver (KGE), replacing an unconstrained recurrent cell with an orthogonal Koopman operator $\mathbf{K}=\exp(\mathbf{A}_{\mathrm{skew}})\in SO(n)$ (implicit $\Delta t=1$). This constrains \emph{latent} Euclidean norm and latent volume; it is not a theorem of energy conservation, Liouville dynamics, or decoded geometry. Bond, angle, and torsion scores are empirical drift from each trajectory's own decoded $t=0$ frame, not versus ground truth. Headline bonded margins are also trained by an isometric loss (fixed weights $10/1/2/5$ for recon/dyn/collapse/iso). Across 14 systems we report a stability--accuracy tradeoff: lower $t=0$ topology drift and $R_{\mathrm{norm}}$ closer to one versus unconstrained recurrent baselines, often with higher pointwise MSE. An equivariant extension (E-GKN) has lower rollout MSE than EGNN on the reported molecules under this protocol.\end{abstract}
 
 % ============================================================
 \section{Introduction}
@@ -86,18 +86,18 @@ During multi-step prediction, standard recurrent transitions (e.g., GRUs) and un
 
 Crucially, standard evaluation metrics often fail to reflect this physical degradation. We observe an \emph{MSE paradox}: on the $N$-body \texttt{springs} benchmark, a Graph GRU obtains a lower multi-seed rollout MSE ($0.0531 \pm 0.0015$, with individual runs reaching $2.56\times10^{-2}$) than our proposed model ($0.1764 \pm 0.0029$), even as its latent norm ratio explodes to $1.98\times$ (and coordinate edge ratio expands to $1.63\times$), indicating severe latent representation expansion that manifests as structural disruption. Mean squared error can reward models that collapse toward spatial centroids or expand uniformly, neither of which preserves inter-atomic topology.
 
-These observations suggest a clear hypothesis: \emph{constraining the latent transition to preserve vector norms and volume will prevent unbounded representation drift and stabilize long-horizon physical rollouts.}
+These observations suggest a clear hypothesis: \emph{constraining the latent transition to preserve vector norms and volume will prevent unbounded latent-norm drift;} decoded topology may then drift less, which we treat as empirical.
 
-We test this hypothesis via the \textbf{Koopman Graph Evolver (\GKE{})}. Drawing from Koopman operator theory~\citep{koopman1931hamiltonian}, we replace recurrent transitions with a linear operator $\K$ acting in a lifted latent space. By parameterizing $\K = \exp(\Ask)$ via a learned skew-symmetric matrix $\Ask$ (implicit $\Delta t=1$), we enforce $\K \in SO(n)$, ensuring that $\K$ is orthogonal and preserves both latent norm and volume by construction. Rather than introducing a novel spatial message-passing mechanism, \GKE{} explicitly isolates the temporal integration layer to evaluate whether latent geometry preservation alone serves as an effective inductive bias for physical rollouts.
+We test this hypothesis via the \textbf{Koopman Graph Evolver (\GKE{})}. Drawing from Koopman operator theory~\citep{koopman1931hamiltonian}, we replace recurrent transitions with a linear operator $\K$ acting in a lifted latent space. By parameterizing $\K = \exp(\Ask)$ via a learned skew-symmetric matrix $\Ask$ (implicit $\Delta t=1$), we enforce $\K \in SO(n)$, so $\K$ is orthogonal and preserves \emph{latent} norm and volume. This is an inductive bias on the temporal cell, not decoded-bond preservation by construction, and not a claim that geometry comes from the orthogonal cell alone ($\mathcal{L}_{\text{iso}}$ also trains bonded distances).
 
-Across 14 benchmark physical systems, empirical results support this hypothesis, revealing a stability--accuracy tradeoff in which geometry-preserving dynamics substantially reduce structural drift while incurring modest increases in pointwise rollout MSE on some datasets.
+Across 14 benchmark systems, empirical results show a stability--accuracy tradeoff: lower decoded-$t=0$ topology drift, often with higher pointwise rollout MSE.
 
 \paragraph{Contributions.}
 \begin{enumerate}
-  \item We characterize a \emph{structural drift failure mode} in recurrent graph dynamics models and demonstrate that rollout MSE is insufficient to detect physical geometric breakdown, establishing the necessity of topology-grounded evaluation.
-  \item We show that \emph{geometry-preserving latent transitions}---implemented via orthogonal Koopman operators---act as a robust inductive bias against multi-step representation collapse and expansion.
-  \item We introduce \GKE{} and its $SE(3)$-equivariant extension \EGKN{}, demonstrating statistically significant improvements ($p < 3.1\times10^{-4}$, Wilcoxon) across 14 physical systems on bond, angle, torsion, and latent-norm-ratio metrics (Table~\ref{tab:wilcoxon}).
-  \item We open-source our codebase, evaluation pipelines, and benchmark splits to facilitate reproducible research in graph dynamical simulation.
+  \item We characterize an \emph{MSE-versus-topology diagnostic}: rollout MSE can miss decoded structural drift (bond/angle/torsion measured from decoded $t=0$, not vs.\ ground truth).
+  \item We show that an \emph{orthogonal $SO(n)$ latent transition} is a useful inductive bias against multi-step latent-norm collapse and expansion (Theorem~\ref{thm:so_n} is latent-only).
+  \item We introduce \GKE{} and its $SE(3)$-equivariant extension \EGKN{}. Wilcoxon tests on those empirical $t=0$-drift scores favor \GKE{} vs.\ \GGRU{} (Table~\ref{tab:wilcoxon}); MSE is often higher for \GKE{}. \EGKN{} vs.\ \EGNN{} is an empirical protocol comparison, not an energy result.
+  \item We open-source our codebase, evaluation pipelines, and benchmark splits.
 \end{enumerate}
 
 % ============================================================
@@ -108,19 +108,19 @@ Across 14 benchmark physical systems, empirical results support this hypothesis,
 Our work sits at the intersection of three areas: long-horizon graph dynamics, equivariant spatial representations, and structured temporal evolution.
 
 \paragraph{Long-horizon graph dynamics.}
-Stabilizing autoregressive rollouts over graphs remains an active challenge.  SEGNO~\citep{liu2023segno} extends EGNNs with steerable features to capture richer SE(3) representations.  GAMD~\citep{wang2023gamd} introduces force-based training objectives, while HERMES~\citep{fu2023simulate} adds a Hamiltonian-aware training loss to encourage energy conservation.  These approaches primarily improve the spatial representation or the training signal; the temporal transition itself remains unconstrained.  Our work is complementary: we keep the spatial encoder generic and instead constrain the \emph{temporal} transition to preserve latent geometry.
+Stabilizing autoregressive rollouts over graphs remains an active challenge.  SEGNO~\citep{liu2023segno} extends EGNNs with steerable features to capture richer SE(3) representations.  GAMD~\citep{wang2023gamd} introduces force-based training objectives, while HERMES~\citep{fu2023simulate} adds a Hamiltonian-aware training loss to encourage energy conservation.  These approaches primarily improve the spatial representation or the training signal; the temporal transition itself remains unconstrained.  Our work is complementary: we keep the spatial encoder generic and instead constrain the \emph{temporal} cell to an orthogonal $SO(n)$ latent map.
 
 \paragraph{Equivariant GNNs for physical simulation.}
 EGNN~\citep{satorras2021n}, NequIP~\citep{batzner2022nequip}, DimeNet~\citep{klicpera2020directional}, and PaiNN~\citep{schutt2021equivariant} achieve SE(3)-equivariance for molecular property prediction and force estimation.  These architectures are powerful \emph{spatial encoders} but do not natively perform temporal rollouts; they must be wrapped in a recurrent cell or ODE solver for multi-step prediction.  The Koopman transition proposed here is, in principle, compatible with any spatial encoder that separates encoding from temporal evolution.
 
 \paragraph{Koopman operator theory.}
-The Koopman operator lifts nonlinear dynamics into an infinite-dimensional linear space~\citep{koopman1931hamiltonian}.  Lusch et al.~\cite{lusch2018deep} and Otto et al.~\cite{otto2019linearly} introduced deep learning approaches to approximate finite-dimensional Koopman eigenfunctions; Morton et al.~\cite{morton2018deep} applied Koopman networks to physical control tasks; Azencot et al.~\cite{azencot2020forecasting} explored orthogonality constraints for time-series forecasting.  Our work extends this line to the graph setting, using the Koopman operator not as an end in itself but as a mechanism for enforcing geometry-preserving latent dynamics within a graph encoder-decoder.
+The Koopman operator lifts nonlinear dynamics into an infinite-dimensional linear space~\citep{koopman1931hamiltonian}.  Lusch et al.~\cite{lusch2018deep} and Otto et al.~\cite{otto2019linearly} introduced deep learning approaches to approximate finite-dimensional Koopman eigenfunctions; Morton et al.~\cite{morton2018deep} applied Koopman networks to physical control tasks; Azencot et al.~\cite{azencot2020forecasting} explored orthogonality constraints for time-series forecasting.  Our work extends this line to the graph setting, using the Koopman operator as an $SO(n)$ constraint on the \emph{latent} time step within a graph encoder-decoder.
 
 \paragraph{Physics-informed neural networks.}
-HNN~\citep{greydanus2019hamiltonian} and LNN~\citep{cranmer2020lagrangian} constrain network outputs to obey Hamiltonian or Lagrangian mechanics.  However, generating trajectories requires integrating the learned vector field with an ODE solver, which itself accumulates numerical drift over long horizons.  \GKE{} sidesteps continuous-time integration entirely: the matrix exponential provides an exact, discrete-time, geometry-preserving transition that avoids solver-induced drift.
+HNN~\citep{greydanus2019hamiltonian} and LNN~\citep{cranmer2020lagrangian} constrain network outputs to obey Hamiltonian or Lagrangian mechanics.  However, generating trajectories requires integrating the learned vector field with an ODE solver, which itself accumulates numerical drift over long horizons.  \GKE{} sidesteps continuous-time integration: the matrix exponential provides an exact discrete-time orthogonal latent step (implicit $\Delta t=1$), not a physical integrator.
 
 \paragraph{Orthogonal recurrent networks.}
-Orthogonal and unitary recurrent neural networks~\citep{arjovsky2016unitary,helfrich2018orthogonal} enforce norm-preserving hidden state updates to prevent exploding and vanishing gradients in sequence processing. While sharing the mathematical parameterization of skew-symmetric matrix exponentials or Cayley transforms, these architectures focus on temporal sequence modeling rather than physical graph simulation. Our work connects matrix-exponential transitions to linear Koopman operator theory for graph dynamics, showing that orthogonal hidden updates prevent physical topology collapse.
+Orthogonal and unitary recurrent neural networks~\citep{arjovsky2016unitary,helfrich2018orthogonal} enforce norm-preserving hidden state updates to prevent exploding and vanishing gradients in sequence processing. While sharing the mathematical parameterization of skew-symmetric matrix exponentials or Cayley transforms, these architectures focus on temporal sequence modeling rather than physical graph simulation. Our work connects matrix-exponential transitions to linear Koopman operator theory for graph dynamics: orthogonal hidden updates bound \emph{latent} norms. Decoded topology is empirical, not a theorem.
 
 % ============================================================
 \section{Method}
@@ -136,10 +136,10 @@ Orthogonal and unitary recurrent neural networks~\citep{arjovsky2016unitary,helf
     Graph $\to$ Encoder $\to$ $\z_t$ $\to$ \textcolor{red}{GRU} $\to$ \textcolor{red}{$\|\z_{t+k}\| \to \infty$} $\to$ Decoder $\to$ \textcolor{red}{Structural Drift} \\
     \\
     \textbf{Koopman Graph Evolver (\GKE{})} \\
-    Graph $\to$ Encoder $\to$ $\z_t$ $\to$ \textcolor{blue}{$\K\in SO(n)$} $\to$ \textcolor{blue}{$\|\z_{t+k}\| = \|\z_t\|$} $\to$ Decoder $\to$ \textcolor{blue}{Stable Geometry}
+    Graph $\to$ Encoder $\to$ $\z_t$ $\to$ \textcolor{blue}{$\K\in SO(n)$} $\to$ \textcolor{blue}{$\|\z_{t+k}\| = \|\z_t\|$} $\to$ Decoder $\to$ \textcolor{blue}{Bounded latent norm}
   \end{tabular}
   \vspace{0.5em}
-  \caption{Conceptual comparison of temporal integration.  Top: unconstrained recurrent transitions allow the latent norm to drift, producing structural degradation in decoded coordinates.  Bottom: \GKE{} applies a geometry-preserving $SO(n)$ transition that maintains latent norm by construction, stabilizing the decoder input regardless of rollout length.}
+  \caption{Conceptual comparison of temporal integration.  Top: unconstrained recurrent transitions allow the latent norm to drift.  Bottom: \GKE{} applies an $SO(n)$ transition that maintains \emph{latent} norm by construction. Decoded bond/angle/torsion are empirical (drift from decoded $t=0$), not guaranteed by Theorem~\ref{thm:so_n}.}
   \label{fig:concept}
 \end{figure}
 
@@ -151,7 +151,7 @@ Let $\mathcal{G}_t = (\mathcal{V}, \mathcal{E}, \x_t)$ be a graph with node 3D c
 \subsection{Koopman Graph Evolver Architecture}
 
 \paragraph{GNN Encoder.}
-A message-passing GNN $\phi_\theta$ embeds the spatial graph into node-level latent representations: $\mathbf{H}_t = \phi_\theta(\mathcal{G}_t) \in \R^{N \times d}$. We utilize a 4-layer GCN with hidden dimension $d=64$. To parameterize a volume-preserving operator over the system's full latent state, the node embeddings are concatenated into a graph-level state vector $\mathbf{s}_t = [\mathbf{h}_{t,1}; \dots; \mathbf{h}_{t,N}] \in \R^{Nd}$.
+A message-passing GNN $\phi_\theta$ embeds the spatial graph into node-level latent representations: $\mathbf{H}_t = \phi_\theta(\mathcal{G}_t) \in \R^{N \times d}$. The reported encoder is a \emph{2-layer} edge-conditioned MPNN with hidden dimension $d=64$ (not a 4-layer GCN). Node embeddings are \emph{concatenated} into a graph-level state $\mathbf{s}_t = [\mathbf{h}_{t,1}; \dots; \mathbf{h}_{t,N}] \in \R^{Nd}$ --- this is not global pooling. A legacy node-wise $64\times 64$ cell (\texttt{GraphKoopmanNet}) exists in the repository but is not CLI-wired and is \emph{not} the reported model.
 
 \paragraph{Koopman Transition Operator.}
 Instead of non-linear recurrent cells (which lack spectral bounds) or continuous ODE integration (which incurs numerical drift), temporal evolution is performed linearly in the lifted latent space:
@@ -164,7 +164,7 @@ Instead of non-linear recurrent cells (which lack spectral bounds) or continuous
   \label{eq:koopman_kron}
   \mathbf{A}_{\text{glob}} = \mathbf{I}_N \otimes \mathbf{A}_{\text{self}} + \alpha \cdot \mathbf{P}_{\text{sym}} \otimes \mathbf{A}_{\text{edge}},
 \end{equation}
-where $\mathbf{A}_{\text{self}}, \mathbf{A}_{\text{edge}} \in \R^{d \times d}$ are shared learned skew-symmetric generator matrices ($\mathbf{A}^\top = -\mathbf{A}$), $\mathbf{P}_{\text{sym}} = \frac{1}{2}(\mathbf{P} + \mathbf{P}^\top)$ is the symmetrized row-normalized adjacency matrix (with $\mathbf{P} = \mathbf{D}^{-1}\mathbf{A}$ guaranteeing $\mathbf{P}_{\text{sym}} = \mathbf{P}_{\text{sym}}^\top$), and $\alpha$ is a learned graph coupling coefficient. The implementation applies $\exp(\mathbf{A}_{\text{glob}})$ with implicit $\Delta t = 1$; $\Delta t$ is not a physical integrator step. Because $\mathbf{A}_{\text{self}}$ and $\mathbf{A}_{\text{edge}}$ operate on the latent channel dimension ($d=64$) and are shared across nodes, the Koopman transition requires only $2 \times \frac{d(d-1)}{2} + 1 = 4,033$ independent parameters ($8,193$ parameter tensor entries), which is independent of the atom count $N$. Consequently, overall model parameter scaling across molecular systems is linear $O(N)$ (driven solely by the graph decoder MLP, Table~\ref{tab:app_params}), avoiding quadratic $O(N^2 d^2)$ parameter explosion.
+where $\mathbf{A}_{\text{self}}, \mathbf{A}_{\text{edge}} \in \R^{d \times d}$ are shared learned skew-symmetric generator matrices ($\mathbf{A}^\top = -\mathbf{A}$), $\mathbf{P}_{\text{sym}} = \frac{1}{2}(\mathbf{P} + \mathbf{P}^\top)$ is the symmetrized row-normalized adjacency matrix (with $\mathbf{P} = \mathbf{D}^{-1}\mathbf{A}$ guaranteeing $\mathbf{P}_{\text{sym}} = \mathbf{P}_{\text{sym}}^\top$), and $\alpha$ is a learned graph coupling coefficient. The reported operator is this Kronecker $\K_{\text{global}}$, not a dense learned $Nd\times Nd$ matrix. The implementation applies $\exp(\mathbf{A}_{\text{glob}})$ with implicit $\Delta t = 1$; $\Delta t$ is not a physical integrator step. Because $\mathbf{A}_{\text{self}}$ and $\mathbf{A}_{\text{edge}}$ operate on the latent channel dimension ($d=64$) and are shared across nodes, the Koopman transition requires only $2 \times \frac{d(d-1)}{2} + 1 = 4,033$ independent parameters ($8,193$ parameter tensor entries), which is independent of the atom count $N$. Consequently, overall model parameter scaling across molecular systems is linear $O(N)$ (driven solely by the graph decoder MLP, Table~\ref{tab:app_params}), avoiding quadratic $O(N^2 d^2)$ parameter explosion.
 
 \paragraph{Graph Decoder.}
 A multi-layer perceptron $\psi_\theta: \R^{Nd} \to \R^{N \times 3}$ maps the evolved graph state vector $\mathbf{s}_{t+1}$ to the 3D coordinates of all $N$ nodes simultaneously: $\hat{\x}_{t+1} = \psi_\theta(\mathbf{s}_{t+1})$. Node identity is implicitly encoded by each node's fixed position within the concatenated vector (node $i$ always occupies indices $[id, (i{+}1)d)$). Because the decoder operates on an ordered concatenated vector, it is not permutation-equivariant; however, molecular graphs have canonical atom orderings, making this design appropriate for the benchmarks considered. For the equivariant extension (E-GKN), the decoder is instead an EGNN message-passing layer that preserves $SE(3)$ equivariance (Section~\ref{sec:egkn}).
@@ -216,21 +216,25 @@ so $\K^{\top}\K = I$.
 \qed
 \end{proof}
 
-\begin{remark}[Connection to Hamiltonian mechanics]
+\begin{remark}[Latent constraint, not physical mechanics]
 \label{cor:liouville}
-Phase-space volume preservation is a characteristic of conservative Hamiltonian systems (Liouville's theorem). Orthogonal Koopman transitions mirror this volume-preservation property.
-
-\textbf{Caveat.} $\K$ is not asserted to be a symplectic map; orthogonality and symplecticity coincide strictly for quadratic isotropic Hamiltonians. Rather, $\K$ adopts volume preservation as a structural constraint without requiring an explicit Hamiltonian formulation.
+$K=\exp(A_{\mathrm{skew}}\Delta t)\in\mathrm{SO}(n)$ preserves \textbf{latent} Euclidean norm and latent volume. This is an inductive bias on the temporal cell (related to orthogonal/unitary RNNs), \textbf{not} a claim that decoded trajectories conserve energy, obey Liouville's theorem in phase space, or inherit Hamiltonian/symplectic structure. Orthogonality and symplecticity coincide only in special cases; we do \textbf{not} assert $K$ is symplectic, nor that observation-space geometry is preserved by Theorem~\ref{thm:so_n}.
 \end{remark}
 
+\paragraph{Limitation 1.}
+Guarantees are latent-only. The decoder is a learned nonlinear map; bonds, angles, and RDFs are \textbf{empirical} outcomes, not theorems.
+
+\paragraph{Limitation 2.}
+$K\in\mathrm{SO}(n)$ forbids dissipative latent eigenvalues. Thermostatted / dissipative MD is outside what the constraint can represent; any gains there are empirical, not continuum legitimacy.
+
 \begin{remark}[Practical consequence]
-Norm-preservation (Theorem~\ref{thm:so_n}.iii) guarantees that decoder inputs maintain bounded norm across arbitrary rollout steps $k$, preventing numerical saturation in downstream layers.
+Norm-preservation (Theorem~\ref{thm:so_n}.iii) guarantees that decoder \emph{inputs} maintain bounded latent norm across rollout steps $k$. That bound does not transfer to decoded coordinates (Limitation~1).
 \end{remark}
 
 \subsection{Equivariant Extension: E-GKN}
 \label{sec:egkn}
 
-For molecular systems requiring $SE(3)$ equivariance, we substitute GCN layers with $E(n)$-equivariant GNN (EGNN) layers~\citep{satorras2021n}, forming \EGKN{}. The architecture separates each node representation $\z_i = [\x_i; \mathbf{h}_i]$ into 3D coordinates $\x_i \in \R^3$ and invariant features $\mathbf{h}_i \in \R^{d-3}$. The Koopman transition acts only on the invariant feature channels:
+For molecular systems requiring $SE(3)$ equivariance, we substitute the MPNN encoder with $E(n)$-equivariant GNN (EGNN) layers~\citep{satorras2021n}, forming \EGKN{}. The architecture separates each node representation $\z_i = [\x_i; \mathbf{h}_i]$ into 3D coordinates $\x_i \in \R^3$ and invariant features $\mathbf{h}_i \in \R^{d-3}$. The Koopman transition is the same Kronecker $\K_{\text{global}}$ construction as \GKE{}, acting only on the concatenated invariant feature channels --- not independent per-node (``node-local'') operators.
 
 \paragraph{Shared Koopman operator.}
 E-GKN learns a \emph{single} pair of skew-symmetric generators $\Ask^{\text{self}}, \Ask^{\text{edge}} \in \R^{(d-3) \times (d-3)}$, shared across all nodes. The global Koopman operator is constructed via Kronecker products that couple node dynamics through the graph topology:
@@ -259,15 +263,18 @@ We evaluate across 14 physical dynamical systems spanning three benchmark domain
 (3) \textbf{$N$-body} simulations (charged particles under Coulomb forces and spring-coupled particle networks).
 
 \paragraph{Baselines and Model Isolation.}
-To evaluate whether temporal geometry preservation improves multi-step stability independently of spatial encoder complexity, we construct comparative baselines that isolate the temporal transition mechanism:
+To evaluate whether an orthogonal latent transition changes multi-step $t=0$-drift scores independently of spatial encoder complexity, we construct comparative baselines that isolate the temporal cell:
 \begin{itemize}
-  \item \textbf{\GGRU{}} (Graph GRU, 252K parameters): Combines a standard GCN encoder with an unconstrained GRU cell to evaluate standard non-linear recurrent transitions.
-  \item \textbf{\GKE{}} (Graph Koopman Evolver, 231K parameters): Uses the identical GCN encoder as \GGRU{}, but substitutes the GRU cell with the orthogonal Koopman transition matrix $\K \in SO(n)$.
-  \item \textbf{\FKoop{}} (Flat Koopman, 2.86M parameters): Evaluates a multi-layer perceptron with the Koopman transition, testing the contribution of spatial graph structure against unstructured representations. (All parameter counts in this section are reported for the aspirin system; \FKoop{} scales with $n_{\text{atoms}}^2$ and ranges from 467K on the smallest $N$-body system to 34.9M on the largest MD22 system --- see Appendix B.)
-  \item \textbf{\EGNN{}} vs. \textbf{\EGKN{}}: Compares standard $SE(3)$-equivariant message passing against its Koopman-augmented counterpart for roto-translationally symmetric dynamics.
+  \item \textbf{\GGRU{}} (Graph GRU, 252K parameters): Combines the same 2-layer MPNN encoder as \GKE{} with an unconstrained GRU cell.
+  \item \textbf{\GKE{}} (Graph Koopman Evolver, 231K parameters): Uses that encoder with Kronecker $\K_{\text{global}}\in SO(n)$ in place of the GRU.
+  \item \textbf{\FKoop{}} (Flat Koopman, 2.86M parameters): MLP encoder with a matrix-exponential Koopman transition (no graph MPNN). (All parameter counts in this section are for aspirin; \FKoop{} scales with $n_{\text{atoms}}^2$ --- see Appendix B.)
+  \item \textbf{\EGNN{}} vs. \textbf{\EGKN{}}: Standard $SE(3)$-equivariant message passing versus its Kronecker-Koopman counterpart.
 \end{itemize}
 
-\paragraph{Physics-Grounded Metrics.}
+\paragraph{Loss asymmetries (not an identical-objective bake-off).}
+Isolation of the temporal cell is the design; identical training objectives are not. \GGRU{} trains $\mathcal{L}_{\text{dyn}}$ with a 4-step latent unroll (\texttt{unroll\_steps=4}); \GKE{} uses single-step latent consistency. \FKoop{} omits $\mathcal{L}_{\text{iso}}$ (no bonded-graph term). \textsc{SEGNO} zeros $\mathcal{L}_{\text{collapse}}$. Do not read the tables as ``same recipe, swap the cell.''
+
+\paragraph{Decoded $t=0$ topology metrics.}
 In addition to standard rollout MSE at step $k=29$, we compute structural topology metrics at the final prediction step. Bond, angle, and torsion scores measure \emph{drift of the decoded rollout from its own decoded $t=0$ frame}, not error versus ground-truth topology (\texttt{physics\_eval.py}; no new GT metric is introduced here):
 \begin{itemize}
   \item \textbf{Bond Drift (\AA):} Mean absolute change in inter-atomic bond lengths relative to the trajectory's decoded $t=0$ coordinates.
@@ -278,19 +285,19 @@ In addition to standard rollout MSE at step $k=29$, we compute structural topolo
 \end{itemize}
 
 \paragraph{Training Protocol.}
-All models are trained for 100 epochs using the Adam optimizer ($\text{lr}=10^{-3}$ with cosine decay) with a batch size of 32 (16 for MD22). Model checkpoints are selected based on validation $R^2$. Multi-seed training and evaluation across random seeds ($\{42, 1337, 2026\}$) is conducted across all 14 physical systems for all ablation architectures (\GKE{}, \GGRU{}, and \FKoop{}), with detailed breakdowns presented in Section~\ref{sec:multiseed} and Appendix~\ref{app:full_results}.
+All models are trained for 100 epochs with \textbf{AdamW} ($\text{lr}=10^{-3}$, weight decay $10^{-4}$). There is \textbf{no cosine schedule}. The CLI default batch size is 16; some launch scripts use 32 for MD17/$N$-body and 16 for MD22 (Table~\ref{tab:hyperparams_summary}). Checkpoints are selected on validation $R^2$. Multi-seed training uses $\{42, 1337, 2026\}$. \GGRU{} $\mathcal{L}_{\text{dyn}}$ uses \texttt{unroll\_steps=4}.
 
 \subsection{Main Results: Structural Drift Mitigation}
 \label{sec:main_results}
 
-Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22} present final-step physical metrics for \GKE{} versus \GGRU{} across all 14 systems. The objective of this experiment is to test whether constraining temporal transitions to $SO(n)$ mitigates unphysical structural deformation over extended rollouts.
+Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22} present final-step $t=0$-drift metrics for \GKE{} versus \GGRU{} across all 14 systems. This tests whether an $SO(n)$ latent cell changes those empirical scores relative to an unconstrained GRU, not whether decoded molecules obey physical mechanics.
 
-The empirical results show marked structural stability improvements: \GKE{} achieves lower bond drift in 13 out of 14 systems, and lower angle and torsion drift across all 14 systems. On complex molecules such as AT-AT and stachyose, \GGRU{} exhibits severe structural degradation (angle drift exceeding $11^\circ$--$24^\circ$), whereas \GKE{} maintains angle errors below $1^\circ$. On the single bond-drift exception (malonaldehyde), \GGRU{} achieves marginally lower bond drift ($0.059$\,\AA\ vs.\ $0.071$\,\AA) but exhibits substantially higher angle ($2.94^\circ$\ vs.\ $0.30^\circ$) and torsion drift ($4.32^\circ$\ vs.\ $0.57^\circ$).
+Empirically, \GKE{} has lower bond drift in 13/14 systems and lower angle and torsion drift in 14/14, with the usual MSE cost. On AT-AT and stachyose, \GGRU{} $t=0$ angle drift exceeds $11^\circ$--$24^\circ$, while \GKE{} stays below $1^\circ$ on those rows. On the bond-drift exception (malonaldehyde), \GGRU{} is slightly lower on bonds ($0.059$\,\AA\ vs.\ $0.071$\,\AA) but higher on angle and torsion. These are decoded-$t=0$ drifts, not vs.\ GT. Bonded margins are also trained by $\mathcal{L}_{\text{iso}}$ (Appendix~\ref{app:loss_ablation}).
 
 \subsection{Statistical Significance}
 \label{sec:stats}
 
-To verify that observed stability gains are statistically robust across diverse physical domains, we execute one-sided Wilcoxon signed-rank tests comparing paired system metrics between \GKE{} and \GGRU{}.
+To check that the $t=0$-drift gaps are not a single-seed artifact, we use one-sided Wilcoxon signed-rank tests on paired system metrics between \GKE{} and \GGRU{}. This is not a proof of physical superiority.
 
 \begin{table}[htbp]
   \centering
@@ -308,15 +315,16 @@ To verify that observed stability gains are statistically robust across diverse 
   \end{tabular}
 \end{table}
 
-All physical metrics demonstrate statistically significant improvements ($p < 3.1\times10^{-4}$).
-In contrast, global coordinate norm retention yields $p=0.076$, confirming that coarse coordinate norms are insensitive to internal structural deformations.
+All listed $t=0$-drift scores favor \GKE{} on this test ($p < 3.1\times10^{-4}$).
+Coarse coordinate-norm retention is weaker ($p=0.076$). Wilcoxon is not a substitute for the MSE-versus-topology tradeoff, and it does not license an energy or Liouville claim.
 
 \subsection{Multi-Seed Robustness Across All 14 Systems}
 \label{sec:multiseed}
 
 To confirm that performance gains are robust across random weight initializations and not artifacts of seed selection, we conduct multi-seed training and evaluation across random seeds ($\{42, 1337, 2026\}$) for all 14 physical dynamical systems across all three ablation models (\GKE{}, \GGRU{}, and \FKoop{}).
 
-Table~\ref{tab:multiseed} summarizes representative systems spanning distinct physical regimes: aspirin (small organic molecule), malonaldehyde (the bond-drift exception), AT-AT (large macromolecule), and springs ($N$-body interaction), with full 14-system multi-seed breakdowns reported in Appendix Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22}. Across all 14 systems, \GKE{} maintains minimal standard deviations across seeds and consistently preserves physical topology and coordinate edge ratios ($R_{\text{edge}} \approx 1.0$), establishing robust initialization invariance.
+Table~\ref{tab:multiseed} summarizes representative systems: aspirin, malonaldehyde (bond-drift exception), AT-AT, and springs, with full 14-system rows in Appendix Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22}. % B5 TODO: Table~\ref{tab:multiseed} is 3-seed aggregate; Appendix MD17/MD22 tables mix single-seed sweep rows --- do not treat colliding cells as one number.
+\GKE{} $R_{\text{norm}}=1$ is architectural; $R_{\text{edge}}$ and bond/angle/torsion remain decoded $t=0$ scores (and iso-trained for bonds).
 
 \begin{table}[htbp]
 \centering
@@ -352,18 +360,18 @@ Table~\ref{tab:multiseed} summarizes representative systems spanning distinct ph
 \subsection{Ablation: Structural Graph Encoding vs. Flat Representations}
 \label{sec:ablation}
 
-This experiment evaluates whether orthogonal latent transitions require spatial graph encodings to maintain stability. Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22} compare \GKE{} against a flat MLP architecture (\FKoop{}) using an identical matrix-exponential Koopman transition.
+This experiment evaluates whether the orthogonal latent cell still needs a graph encoder. Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22} compare \GKE{} against \FKoop{} (MLP + matrix exponential). \FKoop{} also uses an orthogonal Koopman step but \emph{drops} $\mathcal{L}_{\text{iso}}$.
 
-On aspirin, \GKE{} achieves an $11.3\times$ reduction in bond drift and a $43.3\times$ reduction in angle drift compared to \FKoop{}, while using $12.4\times$ fewer parameters (230K vs.\ 2.86M). This confirms that spatial message passing and temporal geometry preservation provide complementary inductive biases: the parameter reduction alone does not explain the drift reduction, since \FKoop{} also uses an orthogonal Koopman transition --- only the graph-structured encoder recovers the missing spatial signal.
+On aspirin, \GKE{} has lower $t=0$ bond/angle drift than \FKoop{} at far fewer parameters (230K vs.\ 2.86M). That is complementary encoder structure plus iso, not ``orthogonality alone.''
 
 \subsection{Equivariant Simulation: E-GKN vs. EGNN}
 \label{sec:egkn_results}
 
-We evaluate whether augmenting $SE(3)$-equivariant GNNs with node-local Koopman transitions improves rollout performance. Table~\ref{tab:egkn} compares rollout MSE at step $k=29$.
+We evaluate whether adding Kronecker $\K_{\text{global}}$ on invariant features changes EGNN rollout MSE. Table~\ref{tab:egkn} reports step $k=29$. This is an empirical protocol comparison, not an energy result.
 
 \begin{table}[htbp]
 \centering
-\caption{Rollout MSE at step $k=29$ for E-GKN versus EGNN. E-GKN significantly outperforms EGNN by enforcing temporal stability.}
+\caption{Rollout MSE at step $k=29$ for E-GKN versus EGNN under the stated protocol. Empirical, not an energy or Liouville comparison.}
 \label{tab:egkn}
 \begin{tabular}{lrr}
 \toprule
@@ -376,14 +384,14 @@ AT-AT (MD22) & $9.18\times 10^{-2}$ & $2.55\times 10^{-4}$ \\
 \end{tabular}
 \end{table}
 
-\EGKN{} achieves 1--3 orders of magnitude lower rollout MSE on large molecules (DHA, AT-AT) compared to standard EGNN. Furthermore, unconstrained EGNN experiences numerical divergence during extended rollouts on 4 of 14 systems due to unbounded latent norm expansion: on toluene and charged $N$-body, final-step metrics reach exact NaN; on DHA and ac-ala3-nhme, unconstrained autoregressive rollouts suffer from compounding numerical instability, with rollout MSE exploding up to $4.9 \times 10^{27}$ before propagating to NaN at subsequent steps (with ac-ala3-nhme's latent norm ratio settling at $109.5\times$). While a tightly tuned EGNN checkpoint at the fixed $k=29$ horizon attains $4.40\times 10^{-2}$ on DHA (Table~\ref{tab:egkn}), its unconstrained message passing remains inherently susceptible to exponential overflow. In contrast, \EGKN{} remains unconditionally stable, with all metrics finite and bounded, across all 14 benchmarks.
+\EGKN{} has 1--3 orders of magnitude lower rollout MSE on DHA and AT-AT than \EGNN{} in Table~\ref{tab:egkn}. Unconstrained \EGNN{} also diverges on 4 of 14 systems (NaN on toluene and charged $N$-body; overflow up to $4.9 \times 10^{27}$ on DHA / ac-ala3-nhme before NaN, with ac-ala3-nhme latent-norm ratio $109.5\times$). A finite $k=29$ \EGNN{} checkpoint can still hide later overflow. \EGKN{} stays finite on the reported 14-system protocol. That is bounded latent features plus the EGNN decoder, not conserved physical energy.
 
 \subsection{Case Studies: Dissecting the MSE Paradox}
 \label{sec:mse_paradox}
 
-\paragraph{$N$-body springs.} On the springs benchmark, \GGRU{} achieves a lower multi-seed rollout MSE ($0.0531 \pm 0.0015$, with individual runs reaching $2.56\times10^{-2}$) than \GKE{} ($0.1764 \pm 0.0029$). However, \GGRU{}'s latent norm ratio explodes to $1.98\times$ (and physical coordinate edge ratio expands to $1.63\times$), accompanied by severe angle ($45.18^\circ$) and torsion ($79.26^\circ$) drift. Inspection of the predicted trajectories confirms that \GGRU{} tends toward approximately uniform coordinate expansion, reducing average point-wise distance while severely degrading relational topology.
+\paragraph{$N$-body springs.} On springs, \GGRU{} has lower multi-seed rollout MSE ($0.0531 \pm 0.0015$; some runs $2.56\times10^{-2}$) than \GKE{} ($0.1764 \pm 0.0029$), while \GGRU{} $R_{\text{norm}}$ reaches $1.98\times$ and $R_{\text{edge}}$ $1.63\times$, with large $t=0$ angle/torsion drift. That is the MSE-versus-topology diagnostic: MSE can reward near-uniform expansion.
 
-\paragraph{MD22 AT-AT.} On AT-AT, unconstrained \GGRU{} exhibits latent norm ratio collapse ($0.63\times$), corresponding to systematic latent contraction that the decoder maps to spatial centroid collapse. Unconstrained \EGNN{} shows the opposite failure mode: its latent norm ratio expands to $5.83\times$, indicating uncontrolled latent norm growth. Both directions of failure are absent in \GKE{} and \EGKN{}, whose orthogonality constraint bounds the latent norm ratio to $1.0$ by construction --- illustrating that unconstrained transitions can fail in either direction depending on architecture, while the Koopman constraint prevents both.
+\paragraph{MD22 AT-AT.} \GGRU{} $R_{\text{norm}}$ contracts ($0.63\times$); unconstrained \EGNN{} expands ($5.83\times$). \GKE{}/\EGKN{} keep latent $R_{\text{norm}}=1$ by the $SO(n)$ parameterization. Decoded $t=0$ topology scores remain empirical (Limitation~1).
 
 \subsection{Comparison with SEGNO}
 
@@ -415,12 +423,12 @@ While both models demonstrate comparable one-step prediction accuracy (Table~\re
 
 SEGNO was evaluated with \texttt{norm\_diff} enabled and bond-distance edge features populated --- the configuration under which SEGNO is designed to control long-horizon rollout error. Under this stabilized configuration, SEGNO successfully avoids catastrophic divergence, maintaining finite and numerically stable rollouts across the full 29-step horizon for all four MD22 systems. On stachyose and ac-ala3-nhme, SEGNO closely tracks E-GKN across the entire rollout horizon, with comparable final MSEs at step 29 (e.g., $0.255$ vs $0.259$ on stachyose). However, on DHA and AT-AT, while remaining numerically stable, SEGNO's rollout error accumulates slightly faster than E-GKN's over longer horizons (e.g., reaching an MSE of $0.627$ vs E-GKN's $0.595$ at step 29 on DHA).
 
-This indicates that while SEGNO's specialized structural stabilization effectively prevents numerical instability during iterative message-passing, E-GKN achieves similar or marginally better long-term error bounds through the geometry-preserving inductive bias of its Koopman transition, without requiring explicit edge feature engineering.
+This indicates that SEGNO's structural stabilization keeps rollouts finite; E-GKN's $SO(n)$ latent cell is a different inductive bias, with similar or slightly lower MSE on some MD22 molecules in this protocol --- not a physical-energy win.
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.42\textwidth]{results/dynamics_tradeoff_dha_egkn_vs_segno.png}
-    \caption{Predictive accuracy and geometric stability comparison between E-GKN and SEGNO on MD22 DHA across 29 rollout steps. Top: Rollout MSE (E-GKN attains lower cumulative rollout error). Rows 2--4: Pairwise coordinate distance ratio, node embedding distance ratio, and graph energy ratio (ideal retention $= 1.0$). SEGNO maintains marginally higher coordinate distance retention via specialized steerable message passing, while E-GKN achieves lower rollout MSE and bounds latent representation collapse ($\rho(K)=1.0$) by construction without requiring engineered edge features.}
+    \caption{E-GKN vs.\ SEGNO on MD22 DHA, 29 rollout steps. Top: rollout MSE. Rows 2--4: pairwise coordinate-distance ratio, node-embedding-distance ratio, and \emph{latent-norm} ratio (not physical energy; not a tabulated 14-system metric). Ratios are relative to decoded/latent $t=0$. SEGNO has slightly higher coordinate-distance retention here; E-GKN has lower MSE and $\rho(K)=1$ on invariant features by construction.}
     \label{fig:segno_rollout}
 \end{figure}
 
@@ -431,9 +439,7 @@ Unlike SEGNO, E-GKN explicitly parameterizes the latent evolution as
 \begin{equation}
 K = \exp(A_{\text{skew}})
 \end{equation}
-(with implicit $\Delta t=1$), which guarantees $K \in SO(n)$, and therefore preserves latent norm and latent volume throughout repeated application. Because $K \in SO(n)$, every eigenvalue lies on the unit circle, implying $\rho(K) = 1$.
-
-This property is architectural rather than empirical and holds independently of the training data. Consequently, the latent evolution remains bounded without requiring explicit spectral regularization or additional stability losses.
+(with implicit $\Delta t=1$), which guarantees $K \in SO(n)$ on those latent channels, so latent Euclidean norm and latent volume are preserved. Eigenvalues of $K$ lie on the unit circle ($\rho(K)=1$). That is a latent-cell fact, not ``stable physics'' in observation space (Remark~\ref{cor:liouville}).
 
 \paragraph{Representation stability}
 We next evaluate whether repeated rollout preserves the learned latent representation versus physical geometry. Given decoded node coordinates $\hat{\mathbf{X}}(t) \in \R^{N \times 3}$ and latent features $\mathbf{H}(t) \in \R^{N \times d}$, let $D_X(t) \in \R^{N \times N}$ and $D_H(t) \in \R^{N \times N}$ denote the pairwise Euclidean distance matrices where $[D_X(t)]_{ij} = \|\hat{\mathbf{x}}_i(t) - \hat{\mathbf{x}}_j(t)\|_2$ and $[D_H(t)]_{ij} = \|\mathbf{h}_i(t) - \mathbf{h}_j(t)\|_2$. The physical coordinate retention and latent collapse metrics are formally defined as:
@@ -446,7 +452,7 @@ When a model suffers from representation contraction, $\frac{\|D_H(T)\|_F}{\|D_H
 
 Across the evaluated MD22 systems, E-GKN consistently exhibits lower latent collapse than SEGNO (Table~\ref{tab:segno_collapse}). This observation is consistent with the orthogonality constraint imposed by the Koopman transition, which prevents artificial contraction or expansion of the latent manifold during iterative propagation.
 
-Interestingly, improvements in latent preservation do not always translate into uniformly better coordinate-level metrics. On some systems, both methods exhibit nearly identical geometric retention, suggesting that decoder expressiveness and spatial message passing remain important factors alongside latent stability. This confirms that while E-GKN's temporal constraint successfully stabilizes long-horizon MSE by bounding latent drift, highly expressive spatial decoders (like SEGNO's steerable features) remain crucial for optimal physical topology retention.
+Interestingly, lower latent collapse does not always mean better decoded geometry. Coordinate retention is mixed; SEGNO's steerable decoder can win pairwise-distance retention while E-GKN bounds latent drift. Decoded topology is empirical (Limitation~1).
 
 \begin{table}[htbp]
 \centering
@@ -461,11 +467,11 @@ dha & 0.0712 & \textbf{0.0467} & \textbf{0.9817} & 0.9699 \\
 at-at & 0.0465 & \textbf{0.0438} & 0.9803 & \textbf{0.9870} \\
 \bottomrule
 \end{tabular}
-\caption{Comparison of latent manifold collapse and physical geometry retention between SEGNO and E-GKN after full rollout.}
+\caption{Latent pairwise-distance collapse and decoded coordinate-distance retention (relative to $t=0$) for SEGNO vs.\ E-GKN after full rollout. Not physical energy; not vs.\ GT topology.}
 \label{tab:segno_collapse}
 \end{table}
 
-These results illustrate a complementary trade-off: SEGNO remains an exceptionally strong molecular dynamics model for short horizons, while E-GKN adds a geometry-preserving Koopman transition that preserves latent norm/volume by construction, reduces latent collapse, and improves long-horizon stability on several challenging molecular systems without sacrificing predictive performance.
+These results are a complementary tradeoff: SEGNO is strong on short-horizon MD22 $R^2$ and often on coordinate retention; E-GKN adds an $SO(n)$ latent cell that bounds latent norm/volume by construction. Long-horizon MSE on the reported molecules is empirical under this protocol, not a physics-energy result.
 
 
 % ============================================================
@@ -473,23 +479,20 @@ These results illustrate a complementary trade-off: SEGNO remains an exceptional
 \label{sec:discussion}
 % ============================================================
 
-\paragraph{Role of latent geometry preservation.}
-Our findings indicate that a primary failure mode in autoregressive graph simulation is unconstrained latent evolution. Standard recurrent cells allow representation vector norms to drift monotonically during rollout, causing the spatial decoder to map shifted latent states into physically non-viable configurations (e.g., bond length expansion or spatial collapse). Constraining the transition operator to be orthogonal bounds latent vector norms by construction, providing structural regularization over extended rollout steps.
+\paragraph{Role of the $SO(n)$ latent cell.}
+A failure mode in these rollouts is unconstrained latent-norm drift: the decoder then maps shifted latents to stretched or collapsed coordinates. An orthogonal cell bounds \emph{latent} norms (Theorem~\ref{thm:so_n}); decoded bond/angle/torsion remain empirical (Limitation~1), and $\mathcal{L}_{\text{iso}}$ also trains bonded distances.
 
-\paragraph{Limitations of MSE in physical simulation.}
-Point-wise rollout MSE measures average Euclidean node distance but remains insensitive to relational geometric integrity. As shown in Section~\ref{sec:mse_paradox}, baseline models can attain low MSE via uniform coordinate expansion or centroid collapse, despite severely violating physical bond and angle constraints. Evaluating physical dynamics models requires topology-grounded metrics (bond, angle, and torsion drift) to identify structural degradation.
+\paragraph{Limitations of MSE.}
+Point-wise rollout MSE is insensitive to relational geometry. Section~\ref{sec:mse_paradox} shows low MSE via expansion or centroid collapse with large $t=0$ bond/angle drift. Topology scores here are drift from decoded $t=0$, not vs.\ GT.
 
-\paragraph{Efficacy of linear transitions.}
-A notable result of this study is that a linear, orthogonal transition operating on a pooled graph representation maintains multi-step stability effectively relative to non-linear recurrent cells. Decoupling non-linear spatial encoding (handled by the GNN encoder/decoder) from temporal integration (handled by the linear Koopman operator) allows a geometric constraint in the lifted latent space to stabilize autoregressive rollouts.
+\paragraph{Linear latent step.}
+A linear orthogonal step on concatenated node embeddings (Kronecker $\K_{\text{glob}}$, not a pooled graph vector and not a dense $Nd\times Nd$ matrix) can reduce those $t=0$-drift scores relative to a GRU cell, at a typical MSE cost.
 
-\paragraph{Optimization and limitations.}
-Both \GKE{} and \EGKN{} achieve peak validation $R^2$ within 1--5 training epochs, whereas recurrent baselines require up to 100 epochs. Constraining the transition operator reduces optimization search space, accelerating convergence. We acknowledge the following limitations:
-
+\paragraph{Optimization and further limitations.}
+Both \GKE{} and \EGKN{} often reach peak validation $R^2$ within 1--5 epochs; recurrent baselines may need more. Limitations~1--2 sit after Theorem~\ref{thm:so_n}. Additionally:
 \begin{enumerate}
-  \item \textbf{Latent guarantees do not transfer to decoded coordinates.} Theorem~\ref{thm:so_n} guarantees norm and volume preservation in the latent space only. The decoder is a learned non-linear mapping, and there is no formal guarantee that bounded latent norms produce physically valid decoded trajectories. Improvements in structural metrics are empirical consequences, not theoretical guarantees.
-  \item \textbf{Orthogonality precludes dissipative dynamics.} Enforcing $\K \in SO(n)$ excludes eigenvalues with $|\lambda| < 1$, making the model unable to represent systems with intrinsic dissipation (e.g., thermostated molecular dynamics, friction-dominated regimes). Extending the parameterization to a skew-symmetric plus small symmetric component ($\Ask + \epsilon\, \mathbf{S}$) could enable controlled dissipation while maintaining approximate stability; we leave this to future work.
-  \item \textbf{Global pooling bottleneck.} In KGE, the pooled graph-level latent vector discards per-node temporal variation, which may contribute to the observed MSE increases relative to per-node recurrent baselines. The E-GKN variant mitigates this via per-node Koopman dynamics, but at increased computational cost.
-  \item \textbf{Alternative G-GRU stabilizers and distributional probes.} Appendix~\ref{app:gru_stabilizers} tests longer pushforward and latent training noise on \GGRU{} (no symplectic integrators): under the full loss, these do not close the bond/angle/torsion gap to \GKE{} on MD17/MD22. Appendix~\ref{app:rdf_pilot} reports decoded radial-distribution comparisons; absolute RDF match often favors \GGRU{}, while horizon drift $\Delta$L1 more often favors \GKE{}.
+  \item \textbf{Reported architecture is Kronecker $\K_{\text{glob}}$.} Node embeddings are concatenated, not pooled. E-GKN uses the same shared Kronecker operator on invariant channels, not independent per-node cells. Legacy \texttt{GraphKoopmanNet} ($64\times 64$ node-wise) is not CLI-wired and is not this paper.
+  \item \textbf{G-GRU stabilizers and RDFs.} Appendix~\ref{app:gru_stabilizers} tests longer pushforward and latent noise on \GGRU{} (no symplectic integrators): under the full loss, they do not close the $t=0$ bond/angle/torsion gap to \GKE{} on MD17/MD22. Appendix~\ref{app:rdf_pilot}: absolute RDF often favors \GGRU{}; horizon $\Delta$L1 more often favors \GKE{}.
 \end{enumerate}
 
 % ============================================================
@@ -497,7 +500,7 @@ Both \GKE{} and \EGKN{} achieve peak validation $R^2$ within 1--5 training epoch
 \label{sec:conclusion}
 % ============================================================
 
-This study demonstrates that preserving latent geometry provides an effective inductive bias for long-horizon graph dynamical simulation. By parameterizing the temporal transition via a matrix-exponential Koopman operator $\K = \exp(\Ask) \in SO(n)$ (implicit $\Delta t=1$), the Koopman Graph Evolver prevents latent representation collapse and uncontrolled norm drift over extended rollouts. Evaluated across 14 physical systems, this geometry-preserving transition yields statistically significant improvements on physical topology metrics. We observe a stability--accuracy tradeoff: KGE substantially reduces bond, angle, and torsion drift at the cost of modest increases in pointwise rollout MSE on some datasets, a tradeoff that our physics-grounded metrics reveal to be favorable for physical fidelity. Our findings highlight the necessity of evaluation beyond point-wise MSE and establish geometry-preserving latent operators as a principled approach for stable graph dynamical modeling.
+An orthogonal Koopman cell $\K=\exp(\Ask)\in SO(n)$ (implicit $\Delta t=1$) bounds \emph{latent} norm and volume. That is an inductive bias on the temporal map, not energy conservation, Liouville mechanics, or decoded-bond preservation by construction (Remark~\ref{cor:liouville}). Across 14 systems we observe an MSE-versus-topology tradeoff: lower decoded-$t=0$ bond/angle/torsion drift versus \GGRU{}, often with higher pointwise MSE. Bonded margins also see $\mathcal{L}_{\text{iso}}$. We do not claim identical-objective baselines or a 14-system physical-energy result. Evaluation beyond MSE remains necessary; the topology scores in this paper are $t=0$ drift, not vs.\ GT.
 
 % ============================================================
 \begin{thebibliography}{10}
@@ -618,7 +621,8 @@ The standard evaluation metric $\rho(\K_{\text{global}})$ reports the spectral r
 \section{Full Per-System Results}
 \label{app:full_results}
 
-We report the complete multi-seed parameter scaling and rollout evaluation metrics for the ablation architectures (Flat Koopman, Graph Koopman, and Graph GRU) across all 14 evaluated physical systems. As shown in Table~\ref{tab:app_params}, the unstructured MLP (Flat Koopman) scales poorly with system size, reaching nearly 35 million parameters on the largest MD22 molecule (stachyose), whereas the graph-structured models (Graph Koopman and Graph GRU) scale linearly and require significantly fewer parameters. Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22} report the comprehensive multi-seed averaged rollout metrics across all 14 evaluated physical systems, including physical coordinate edge-length ratios ($R_{\text{edge}}$). Bond, angle, and torsion columns are drift from decoded $t=0$, not versus ground-truth topology.
+We report parameter counts and rollout metrics for Flat Koopman, Graph Koopman, and Graph GRU across 14 systems. Table~\ref{tab:app_params} is parameter scaling. Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22} include $R_{\text{edge}}$ and bond/angle/torsion as drift from decoded $t=0$, not vs.\ GT.
+% B5 TODO (numbers bible): Table~\ref{tab:multiseed} is 3-seed aggregate; these appendix tables include single-seed sweep cells that collide with Table~\ref{tab:multiseed} --- do not merge them into one canonical number without the local eval_logs inventory.
 
 \begin{table}[h]
 \centering
@@ -732,31 +736,32 @@ n-body (springs) & 467,151 & 93,264 & 114,128 \\
 \label{app:hyperparams}
 
 \paragraph{Hyperparameter Tuning Protocol.}
-To avoid combinatorial compute overhead across all 14 datasets, hyperparameters were tuned via validation sweeps on representative physical systems (aspirin for small molecules and DHA for flexible macromolecules) across the candidate ranges:
+To avoid combinatorial compute overhead across all 14 datasets, hyperparameters were selected on representative systems (aspirin, DHA) from the ranges below. \textbf{Table~\ref{tab:hyperparams_summary} reports the trainer that produced the numbers}, not a paperwashed retrain:
 \begin{itemize}[leftmargin=1.5em,itemsep=1pt,topsep=1pt]
-  \item Initial learning rate: $\{1\times 10^{-4}, 5\times 10^{-4}, 1\times 10^{-3}, 2\times 10^{-3}\}$ (using Adam with cosine decay).
-  \item Hidden feature dimension $d$: $\{32, 64, 128\}$.
-  \item Message-passing GNN layers: $\{2, 4, 6\}$.
-  \item Batch size: $\{16, 32, 64\}$ (fixed to 16 for memory efficiency on larger MD22 molecules).
-  \item Multi-task loss weights: $\lambda_{\text{recon}} \in \{5.0, 10.0, 20.0\}$, $\lambda_{\text{dyn}} \in \{0.5, 1.0, 2.0\}$, $\lambda_{\text{collapse}} \in \{1.0, 2.0, 5.0\}$, $\lambda_{\text{iso}} \in \{2.0, 5.0, 10.0\}$.
+  \item Initial learning rate: $\{1\times 10^{-4}, 5\times 10^{-4}, 1\times 10^{-3}, 2\times 10^{-3}\}$. The run uses constant $\mathrm{lr}=10^{-3}$ with \textbf{AdamW} (weight decay $10^{-4}$); \textbf{no cosine schedule}.
+  \item Hidden feature dimension $d$: $\{32, 64, 128\}$ (selected $64$).
+  \item Message-passing layers: $\{2, 4, 6\}$. The reported \GKE{}/\GGRU{} encoder is \textbf{2 MPNN layers} (\texttt{EdgeConditionedConv}).
+  \item Batch size: $\{16, 32, 64\}$. \textbf{CLI default is 16}; \texttt{run\_all.sh} and some rebuttal scripts use 32 for MD17/$N$-body and 16 for MD22.
+  \item Multi-task loss weights: $\lambda_{\text{recon}} \in \{5.0, 10.0, 20.0\}$, $\lambda_{\text{dyn}} \in \{0.5, 1.0, 2.0\}$, $\lambda_{\text{collapse}} \in \{1.0, 2.0, 5.0\}$, $\lambda_{\text{iso}} \in \{2.0, 5.0, 10.0\}$ (selected $10/1/2/5$, fixed; no annealed $\lambda$).
 \end{itemize}
-Once the optimal stable configuration was identified on validation splits, it was kept fixed across all 14 benchmark physical systems for all models to ensure fair and consistent evaluation without test-set tuning or information leakage (Table~\ref{tab:hyperparams_summary}).
+Once selected, the configuration in Table~\ref{tab:hyperparams_summary} was held fixed. Baseline loss asymmetries (Section~\ref{sec:experiments}) still apply.
 
 \begin{table}[htbp]
 \centering
-\caption{Standardized training hyperparameters across evaluated models.}
+\caption{Training hyperparameters of the \emph{reported} runs (CLI / \texttt{GraphAwareTrainer}), not a cosine/4-layer paperwash. Bond/angle/torsion eval is decoded $t=0$ drift.}
 \label{tab:hyperparams_summary}
 \begin{tabular}{ll}
   \toprule
-  Hyperparameter & Selected Value \\
+  Hyperparameter & Reported run \\
   \midrule
-  Optimizer & Adam ($\beta_1=0.9, \beta_2=0.999$) \\
-  Learning rate & $1\times 10^{-3}$ (cosine decay to $1\times 10^{-5}$) \\
-  Batch size & 32 (16 for MD22 systems) \\
+  Optimizer & AdamW ($\beta_1=0.9, \beta_2=0.999$), weight decay $10^{-4}$ \\
+  Learning rate & $1\times 10^{-3}$ (constant; \textbf{no cosine}) \\
+  Batch size & CLI default 16; some scripts 32 (MD17/$N$-body) / 16 (MD22) \\
   Training epochs & 100 \\
   Latent dimension $d$ & 64 \\
-  GNN / EGNN layers & 4 \\
-  Loss weights $(\lambda_{\text{recon}}, \lambda_{\text{dyn}}, \lambda_{\text{collapse}}, \lambda_{\text{iso}})$ & $(10.0, 1.0, 2.0, 5.0)$ \\
+  \GKE{}/\GGRU{} MPNN layers & 2 \\
+  \GGRU{} \texttt{unroll\_steps} & 4 (single-step $\mathcal{L}_{\text{dyn}}$ for \GKE{}) \\
+  Loss weights $(\lambda_{\text{recon}}, \lambda_{\text{dyn}}, \lambda_{\text{collapse}}, \lambda_{\text{iso}})$ & $(10.0, 1.0, 2.0, 5.0)$ (fixed) \\
   Evaluation horizon & 29 rollout steps \\
   Random seeds & $\{42, 1337, 2026\}$ \\
   \bottomrule
@@ -764,7 +769,7 @@ Once the optimal stable configuration was identified on validation splits, it wa
 \end{table}
 
 \paragraph{Computational Hardware and Training Efficiency.}
-All models were implemented in PyTorch and PyTorch Geometric, and trained on hardware consisting of NVIDIA A100 (80GB) and NVIDIA RTX 3090 (24GB) GPUs. Training throughput is highly efficient: a 100-epoch training run requires $\approx 3\text{--}5$ minutes for small MD17 molecules and $N$-body systems, and $\approx 15\text{--}35$ minutes for larger MD22 macromolecules (such as \texttt{stachyose}, 87 atoms). Evaluation rollouts and physical metric extraction require less than 2 minutes per trajectory.
+All models were implemented in PyTorch and PyTorch Geometric, and trained on hardware consisting of NVIDIA A100 (80GB) and NVIDIA RTX 3090 (24GB) GPUs. Training throughput is highly efficient: a 100-epoch training run requires $\approx 3\text{--}5$ minutes for small MD17 molecules and $N$-body systems, and $\approx 15\text{--}35$ minutes for larger MD22 macromolecules (such as \texttt{stachyose}, 87 atoms). Evaluation rollouts and $t=0$-drift metric extraction require less than 2 minutes per trajectory.
 
 \section{Loss Ablation: Removing $\mathcal{L}_{\text{collapse}}$ and $\mathcal{L}_{\text{iso}}$}
 \label{app:loss_ablation}
@@ -916,7 +921,7 @@ stachyose & 1.436 & 11.521 & 11.067 & 11.312 & 11.075 \\
 Noise alone stays close to vanilla \GGRU{} on almost every row of Tables~\ref{tab:gru_stab_bond_angle} and~\ref{tab:gru_stab_torsion}.
 Pushforward (pf16) reduces angle and torsion on aspirin, benzene, ac-ala3-nhme, and dha, but \emph{increases} them on ethanol, malonaldehyde, naphthalene, toluene, and at-at; pf16+noise tracks pf16.
 Across all twelve systems, no stabilizer arm brings bond, angle, and torsion simultaneously within $2\times$ of \GKE{}.
-Under this protocol, longer pushforward and latent training noise do not replace the orthogonal Koopman transition for topology-grounded metrics.
+Under this protocol, longer pushforward and latent training noise do not close the decoded-$t=0$ bond/angle/torsion gap. This is not a claim that $SO(n)$ ``wins physics.''
 
 \section{Decoded RDF Pilot}
 \label{app:rdf_pilot}
@@ -977,7 +982,7 @@ Bonded L1 is mixed (aspirin and dha favor \GKE{}; most MD17 molecules favor \GGR
 Horizon drift $\Delta$ is the clearer \GKE{} signal: \GGRU{} bonded $\Delta$ is large on benzene ($+18.4$), ethanol ($+10.9$), and malonaldehyde ($+16.4$), while \GKE{} stays near-flat or negative.
 Mean bonded lengths are usually near GT; stachyose \GKE{} ($0.19$\,\AA\ vs.\ GT $1.28$\,\AA) is a decode-collapse outlier and should not be read as a fair RDF comparison.
 We treat RDFs as a \emph{stability} nuance complementary to Table~\ref{tab:wilcoxon}, not as evidence that \GKE{} matches ground-truth $g(r)$ better in absolute terms.
-Primary structural claims remain bond, angle, torsion, $R_{\text{norm}}$, and $R_{\text{edge}}$.
+Reported topology scores remain decoded-$t=0$ bond/angle/torsion, $R_{\text{norm}}$, and $R_{\text{edge}}$ --- not vs.\ GT, and not physical energy.
 
 \section{Latent Norm Ratio and Coordinate Edge Ratio Computation}
 \label{app:norm_ratio}

@@ -29,9 +29,8 @@ from koopman_evolver.data.dataset_split import GraphDatasetSplit
 
 class GraphTrainer:
     """
-    OBSOLETE: Legacy Trainer for Experiment 3 models (GraphKoopmanNet and GraphGRUNet).
-    Superseded by `GraphAwareTrainer` which actively monitors and minimizes the structural
-    `alpha` tradeoff parameter during training to preserve physical constraints.
+    OBSOLETE: Legacy trainer for GraphKoopmanNet / GraphGRUNet (not the paper).
+    Use GraphAwareTrainer. Does not conserve physical energy.
     """
     def __init__(
         self,
@@ -158,8 +157,8 @@ class GraphTrainer:
 
 class GraphAwareTrainer:
     """
-    Trainer for Graph dynamics models (GraphAwareKoopmanNet and GraphAwareGRUNet).
-    Guards checkpoints against trivial latent collapse.
+    Trainer for GraphAwareKoopmanNet / GraphAwareGRUNet (reported family).
+    Guards checkpoints against trivial encoder freeze (relative change < 1e-4).
     """
     def __init__(
         self,

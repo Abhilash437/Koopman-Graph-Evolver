@@ -307,7 +307,7 @@ class GraphKoopmanEvaluator:
 
         # Top: MSE
         ax1 = fig.add_subplot(gs[0])
-        ax1.plot(steps_err, results.koopman_mse_mean, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=4, label='Koopman (Node-Level)')
+        ax1.plot(steps_err, results.koopman_mse_mean, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=4, label='Koopman (Kronecker K_glob)')
         ax1.fill_between(steps_err, results.koopman_mse_mean - results.koopman_mse_std, results.koopman_mse_mean + results.koopman_mse_std, color=KOOP_COLOR, alpha=0.15)
         ax1.plot(steps_err, results.baseline_mse_mean, color=BASE_COLOR, linewidth=2.5, linestyle='--', marker='x', markersize=5, label='GRU Baseline')
         ax1.fill_between(steps_err, results.baseline_mse_mean - results.baseline_mse_std, results.baseline_mse_mean + results.baseline_mse_std, color=BASE_COLOR, alpha=0.15)
@@ -329,7 +329,7 @@ class GraphKoopmanEvaluator:
 
         # Bottom: Node Embedding Geometry Retention
         ax3 = fig.add_subplot(gs[2], sharex=ax1)
-        ax3.plot(steps_geom, koop_node_norm, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=4, label='Koopman (Node-Level)')
+        ax3.plot(steps_geom, koop_node_norm, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=4, label='Koopman (Kronecker K_glob)')
         ax3.fill_between(steps_geom, koop_node_norm - koop_nstd_norm, koop_node_norm + koop_nstd_norm, color=KOOP_COLOR, alpha=0.15)
         ax3.plot(steps_geom, base_node_norm, color=BASE_COLOR, linewidth=2.5, linestyle='--', marker='x', markersize=5, label='GRU Baseline')
         ax3.fill_between(steps_geom, base_node_norm - base_nstd_norm, base_node_norm + base_nstd_norm, color=BASE_COLOR, alpha=0.15)
@@ -379,8 +379,8 @@ class GraphAwareEvalResults:
 
 class GraphAwareKoopmanEvaluator:
     """
-    Evaluator for Graph-Aware dynamics models. Computes rollout MSE, spectral radius of the Kronecker
-    operator K_global, dual geometry retention ratios, and rollout Graph Energy.
+    Evaluator for Graph-Aware dynamics models. Computes rollout MSE, spectral radius of Kronecker
+    K_global, dual geometry retention ratios, and latent-norm ratio (not physical energy).
     """
     def __init__(
         self,
@@ -427,7 +427,7 @@ class GraphAwareKoopmanEvaluator:
             k_node_geom_mean, k_node_geom_std = self._node_geometry_retention(self.koopman_model, z_koop, lengths)
             b_node_geom_mean, b_node_geom_std = self._node_geometry_retention(self.baseline_model, z_base, lengths)
 
-            # Graph energy ratio
+            # Latent-norm ratio (not physical energy)
             k_energy_mean, k_energy_std = self._graph_energy_retention(self.koopman_model, z_koop, lengths)
             b_energy_mean, b_energy_std = self._graph_energy_retention(self.baseline_model, z_base, lengths)
 
@@ -626,9 +626,9 @@ class GraphAwareKoopmanEvaluator:
         print(f"  Koopman Node Emb. Retention  : {results.koopman_node_geom_mean[-1]:.4f}")
         print(f"  Baseline Node Emb. Retention : {results.baseline_node_geom_mean[-1]:.4f}")
 
-        print("\n[4] GRAPH ENERGY @ final step")
-        print(f"  Koopman Graph Energy Ratio   : {results.koopman_energy_mean[-1]:.4f}")
-        print(f"  Baseline Graph Energy Ratio  : {results.baseline_energy_mean[-1]:.4f}")
+        print("\n[4] LATENT NORM RATIO @ final step (not physical energy)")
+        print(f"  Koopman latent-norm ratio   : {results.koopman_energy_mean[-1]:.4f}")
+        print(f"  Baseline latent-norm ratio  : {results.baseline_energy_mean[-1]:.4f}")
 
         print("\n[5] COLLAPSE DIAGNOSTIC")
         print(f"  Koopman  relative change: {results.relative_change_koopman:.4f}  "
@@ -695,7 +695,7 @@ class GraphAwareKoopmanEvaluator:
         ax3.legend(fontsize=10, loc='lower left')
         ax3.grid(True, linestyle=':', alpha=0.5)
 
-        # 4. Graph Energy Retention
+        # 4. Latent-norm ratio (not physical energy)
         ax4 = fig.add_subplot(gs[3], sharex=ax1)
         ax4.plot(steps_geom, results.koopman_energy_mean, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=4, label=self.koopman_label)
         ax4.fill_between(steps_geom, results.koopman_energy_mean - results.koopman_energy_std, results.koopman_energy_mean + results.koopman_energy_std, color=KOOP_COLOR, alpha=0.15)
@@ -703,7 +703,7 @@ class GraphAwareKoopmanEvaluator:
         ax4.fill_between(steps_geom, results.baseline_energy_mean - results.baseline_energy_std, results.baseline_energy_mean + results.baseline_energy_std, color=BASE_COLOR, alpha=0.15)
         ax4.axhline(1.0, color='gray', linewidth=1.0, linestyle=':', alpha=0.7)
         ax4.set_xlabel("Prediction Horizon (steps)", fontsize=12)
-        ax4.set_ylabel("Graph Energy Ratio (Et / E0)\n(normalized to t=0)", fontsize=12)
+        ax4.set_ylabel("Latent-norm ratio (||h_t||^2 / ||h_0||^2)\n(not physical energy)", fontsize=12)
         ax4.legend(fontsize=10, loc='lower left')
         ax4.grid(True, linestyle=':', alpha=0.5)
 
@@ -867,7 +867,7 @@ class PhysicsEval:
         ax4 = fig.add_subplot(gs[1, 0])
         ax4.plot(steps_arr, kb, color='#2166ac', linewidth=2.5, marker='o', markersize=4, label='Koopman')
         ax4.plot(steps_arr, gb, color='#d6604d', linewidth=2.5, linestyle='--', marker='x', markersize=5, label='GRU')
-        ax4.set_title("Mean Bond Length Drift", fontsize=13, fontweight='bold')
+        ax4.set_title("Mean Bond Length Drift (decoded t=0, not vs GT)", fontsize=13, fontweight='bold')
         ax4.set_xlabel("Prediction Horizon (steps)")
         ax4.set_ylabel("Drift from t=0 (Angstroms)")
         ax4.grid(True, linestyle=':', alpha=0.5)
@@ -876,7 +876,7 @@ class PhysicsEval:
         ax5 = fig.add_subplot(gs[1, 1])
         ax5.plot(steps_arr, ka, color='#2166ac', linewidth=2.5, marker='o', markersize=4)
         ax5.plot(steps_arr, ga, color='#d6604d', linewidth=2.5, linestyle='--', marker='x', markersize=5)
-        ax5.set_title("Mean Bond Angle Drift", fontsize=13, fontweight='bold')
+        ax5.set_title("Mean Bond Angle Drift (decoded t=0, not vs GT)", fontsize=13, fontweight='bold')
         ax5.set_xlabel("Prediction Horizon (steps)")
         ax5.set_ylabel("Drift from t=0 (Degrees)")
         ax5.grid(True, linestyle=':', alpha=0.5)
@@ -884,7 +884,7 @@ class PhysicsEval:
         ax6 = fig.add_subplot(gs[1, 2])
         ax6.plot(steps_arr, kt, color='#2166ac', linewidth=2.5, marker='o', markersize=4)
         ax6.plot(steps_arr, gt, color='#d6604d', linewidth=2.5, linestyle='--', marker='x', markersize=5)
-        ax6.set_title("Mean Torsion Angle Drift", fontsize=13, fontweight='bold')
+        ax6.set_title("Mean Torsion Angle Drift (decoded t=0, not vs GT)", fontsize=13, fontweight='bold')
         ax6.set_xlabel("Prediction Horizon (steps)")
         ax6.set_ylabel("Drift from t=0 (Degrees)")
         ax6.grid(True, linestyle=':', alpha=0.5)
@@ -921,7 +921,7 @@ class ThreeWayEvalResults:
     graph_gru_angle_drift: np.ndarray
     graph_gru_torsion_drift: np.ndarray
 
-    # Latent energy ratio (only meaningful for graph models, flat uses norm)
+    # Latent-norm ratio (not physical energy)
     flat_energy_ratio: np.ndarray
     graph_koop_energy_ratio: np.ndarray
     graph_gru_energy_ratio: np.ndarray
@@ -944,9 +944,9 @@ class ThreeWayAblationEvaluator:
 
     Computes all metrics in coordinate space for fair comparison:
     - Rollout MSE (decoded coordinates)
-    - Bond length drift, bond angle drift, torsion angle drift
+    - Bond/angle/torsion drift from decoded t=0 (not vs GT)
     - Spectral radii of K operators
-    - Latent energy stability
+    - Latent-norm ratio (not physical energy)
     """
 
     def __init__(
@@ -1098,7 +1098,7 @@ class ThreeWayAblationEvaluator:
         return mse_mean, mse_std
 
     def _compute_energy_ratio(self, model, node_feats, edge_idx, edge_feats, lengths, steps, is_flat=False):
-        """Compute latent energy ratio E(t) / E(0) over rollout."""
+        """Compute latent-norm ratio ||h_t||^2 / ||h_0||^2 over rollout (not physical energy)."""
         with torch.no_grad():
             if is_flat:
                 h_seq = model(node_feats)
@@ -1176,7 +1176,7 @@ class ThreeWayAblationEvaluator:
         rho_graph = float(np.max(np.abs(np.linalg.eigvals(K_graph))))
 
         # Latent energy ratio
-        print("  Computing latent energy ratios...")
+        print("  Computing latent-norm ratios (not physical energy)...")
         flat_energy = self._compute_energy_ratio(
             self.flat_model, node_feats, edge_idx, edge_feats, lengths, steps, is_flat=True
         )
@@ -1245,7 +1245,7 @@ class ThreeWayAblationEvaluator:
         print(f"  Graph Koopman : {results.graph_koop_mse_mean[S]:.6f}")
         print(f"  Graph GRU     : {results.graph_gru_mse_mean[S]:.6f}")
 
-        print(f"\n{'PHYSICAL DIAGNOSTICS @ step {S+1}':^80}")
+        print(f"\n{'T=0 DRIFT DIAGNOSTICS @ step {S+1} (not vs GT)':^80}")
         print(thin)
         print(f"  {'Metric':<25} {'Flat Koop':>12} {'Graph Koop':>12} {'Graph GRU':>12}")
         print(f"  {'Bond Drift (Å)':<25} {results.flat_bond_drift[S]:.6f} "
@@ -1276,7 +1276,7 @@ class ThreeWayAblationEvaluator:
             'Bond Drift': (results.flat_bond_drift[S], results.graph_koop_bond_drift[S], results.graph_gru_bond_drift[S]),
             'Angle Drift': (results.flat_angle_drift[S], results.graph_koop_angle_drift[S], results.graph_gru_angle_drift[S]),
             'Torsion Drift': (results.flat_torsion_drift[S], results.graph_koop_torsion_drift[S], results.graph_gru_torsion_drift[S]),
-            'Energy Stability': (
+            'Latent-norm |R-1|': (
                 float(abs(results.flat_energy_ratio[S] - 1.0)),
                 float(abs(results.graph_koop_energy_ratio[S] - 1.0)),
                 float(abs(results.graph_gru_energy_ratio[S] - 1.0)),
@@ -1321,7 +1321,7 @@ class ThreeWayAblationEvaluator:
         ax2.plot(steps_phys, results.flat_bond_drift, color=FLAT_COLOR, linewidth=2.5, marker='s', markersize=3, label='Flat Koopman')
         ax2.plot(steps_phys, results.graph_koop_bond_drift, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=3, label='Graph Koopman')
         ax2.plot(steps_phys, results.graph_gru_bond_drift, color=GRU_COLOR, linewidth=2.5, linestyle='--', marker='x', markersize=4, label='Graph GRU')
-        ax2.set_title("Mean Bond Length Drift", fontsize=13, fontweight='bold')
+        ax2.set_title("Mean Bond Length Drift (decoded t=0, not vs GT)", fontsize=13, fontweight='bold')
         ax2.set_xlabel("Prediction Horizon (steps)")
         ax2.set_ylabel("Drift from t=0 (Å)")
         ax2.grid(True, linestyle=':', alpha=0.5)
@@ -1332,7 +1332,7 @@ class ThreeWayAblationEvaluator:
         ax3.plot(steps_phys, results.flat_angle_drift, color=FLAT_COLOR, linewidth=2.5, marker='s', markersize=3)
         ax3.plot(steps_phys, results.graph_koop_angle_drift, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=3)
         ax3.plot(steps_phys, results.graph_gru_angle_drift, color=GRU_COLOR, linewidth=2.5, linestyle='--', marker='x', markersize=4)
-        ax3.set_title("Mean Bond Angle Drift", fontsize=13, fontweight='bold')
+        ax3.set_title("Mean Bond Angle Drift (decoded t=0, not vs GT)", fontsize=13, fontweight='bold')
         ax3.set_xlabel("Prediction Horizon (steps)")
         ax3.set_ylabel("Drift from t=0 (Degrees)")
         ax3.grid(True, linestyle=':', alpha=0.5)
@@ -1342,21 +1342,21 @@ class ThreeWayAblationEvaluator:
         ax4.plot(steps_phys, results.flat_torsion_drift, color=FLAT_COLOR, linewidth=2.5, marker='s', markersize=3)
         ax4.plot(steps_phys, results.graph_koop_torsion_drift, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=3)
         ax4.plot(steps_phys, results.graph_gru_torsion_drift, color=GRU_COLOR, linewidth=2.5, linestyle='--', marker='x', markersize=4)
-        ax4.set_title("Mean Torsion Angle Drift", fontsize=13, fontweight='bold')
+        ax4.set_title("Mean Torsion Angle Drift (decoded t=0, not vs GT)", fontsize=13, fontweight='bold')
         ax4.set_xlabel("Prediction Horizon (steps)")
         ax4.set_ylabel("Drift from t=0 (Degrees)")
         ax4.grid(True, linestyle=':', alpha=0.5)
 
-        # ─── 5. Latent Energy Ratio ───
+        # ─── 5. Latent-norm ratio (not physical energy) ───
         ax5 = fig.add_subplot(gs[2, 1])
         energy_steps = np.arange(len(results.flat_energy_ratio))
         ax5.plot(energy_steps, results.flat_energy_ratio, color=FLAT_COLOR, linewidth=2.5, marker='s', markersize=3, label='Flat Koopman')
         ax5.plot(energy_steps, results.graph_koop_energy_ratio, color=KOOP_COLOR, linewidth=2.5, marker='o', markersize=3, label='Graph Koopman')
         ax5.plot(energy_steps, results.graph_gru_energy_ratio, color=GRU_COLOR, linewidth=2.5, linestyle='--', marker='x', markersize=4, label='Graph GRU')
         ax5.axhline(1.0, color='gray', linewidth=1.0, linestyle=':', alpha=0.7, label='Perfect stability (1.0)')
-        ax5.set_title("Latent Energy Ratio (E_t / E_0)", fontsize=13, fontweight='bold')
+        ax5.set_title("Latent-norm ratio (||h_t||^2 / ||h_0||^2)", fontsize=13, fontweight='bold')
         ax5.set_xlabel("Prediction Horizon (steps)")
-        ax5.set_ylabel("Energy Ratio")
+        ax5.set_ylabel("Latent-norm ratio (not energy)")
         ax5.legend(fontsize=9)
         ax5.grid(True, linestyle=':', alpha=0.5)
 
