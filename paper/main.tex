@@ -335,7 +335,7 @@ Never cite a P1 cell as a multi-seed mean.
 
 \begin{table}[htbp]
 \centering
-\caption{3-seed aggregate (P3), seeds $\{42, 1337, 2026\}$. Springs MSE is recomputed from nbody twins (\texttt{multiseed\_results\_nbody*.txt}; sample std). Other $\pm$ in this table are as previously reported (population std). Bond/angle/torsion columns are mean absolute drift from the trajectory's own decoded $t=0$ frame, not vs.\ ground-truth topology. $R_{\text{edge}}$ is likewise relative to decoded $t=0$.}
+\caption{3-seed aggregate (P3), seeds $\{42, 1337, 2026\}$. Springs MSE is mean$\pm$sample stdev from \texttt{multiseed\_results\_nbody.txt} (seeds 42, 1337) and \texttt{multiseed\_results\_nbody\_2026.txt} (seed 2026). Other $\pm$ in this table are as previously reported (population std). Bond/angle/torsion columns are mean absolute drift from the trajectory's own decoded $t=0$ frame, not vs.\ ground-truth topology. $R_{\text{edge}}$ is likewise relative to decoded $t=0$.}
 \label{tab:multiseed}
 \resizebox{\textwidth}{!}{
 \begin{tabular}{llrrrrr}
@@ -396,7 +396,7 @@ AT-AT (MD22) & $9.18\times 10^{-2}$ & $2.55\times 10^{-4}$ \\
 \subsection{Case Studies: Dissecting the MSE Paradox}
 \label{sec:mse_paradox}
 
-\paragraph{$N$-body springs.} On springs (Table~\ref{tab:multiseed}, P3 nbody twins \texttt{multiseed\_results\_nbody*.txt}), \GGRU{} has lower rollout MSE ($0.0455 \pm 0.0185$; individual runs reaching $2.56\times10^{-2}$) than \GKE{} ($0.1768 \pm 0.0030$). Structural quotes are the same P3 cells: bond $0.6167\pm 0.0131$\,\AA, angle $46.5105\pm 0.8687^\circ$, torsion $80.2149\pm 0.9485^\circ$, $R_{\text{edge}}=1.6290$ (decoded $t=0$ drift). That is the MSE-versus-topology diagnostic: MSE can reward near-uniform expansion.
+\paragraph{$N$-body springs.} On springs (Table~\ref{tab:multiseed}, P3),\footnote{Springs MSE: mean $\pm$ sample stdev over seeds $\{42,1337,2026\}$ from \texttt{multiseed\_results\_nbody.txt} (seeds 42, 1337) and \texttt{multiseed\_results\_nbody\_2026.txt} (seed 2026).} \GGRU{} has lower rollout MSE ($0.0455 \pm 0.0185$; individual runs reaching $2.56\times10^{-2}$) than \GKE{} ($0.1768 \pm 0.0030$). Structural quotes are the same P3 cells: bond $0.6167\pm 0.0131$\,\AA, angle $46.5105\pm 0.8687^\circ$, torsion $80.2149\pm 0.9485^\circ$, $R_{\text{edge}}=1.6290$ (decoded $t=0$ drift). That is the MSE-versus-topology diagnostic: MSE can reward near-uniform expansion.
 
 \paragraph{MD22 AT-AT.} \GGRU{} $R_{\text{norm}}$ contracts ($0.63\times$); unconstrained \EGNN{} expands ($5.83\times$). \GKE{}/\EGKN{} keep latent $R_{\text{norm}}=1$ by the $SO(n)$ parameterization. Decoded $t=0$ topology scores remain empirical (Limitation~1).
 
@@ -666,7 +666,7 @@ n-body (springs) & 467,151 & 93,264 & 114,128 \\
 \textbf{System} & \textbf{Model} & \textbf{MSE} & \textbf{Bond (\AA)} & \textbf{Angle ($^\circ$)} & \textbf{Torsion ($^\circ$)} & \textbf{Latent $R_{\text{norm}}$} & \textbf{Coord $R_{\text{edge}}$} \\
 \midrule
 \multirow{3}{*}{aspirin} & Flat Koopman & 0.0715 & 0.0793 & 4.2965 & 4.6356 & 0.9999 & 0.9707 \\
- & Graph Koopman & 0.2411 & 0.0070 & 0.0992 & 0.2210 & 1.0000 & 0.9974 \\
+ & Graph Koopman & 0.2350 & 0.0070 & 0.0992 & 0.2210 & 1.0000 & 0.9974 \\
  & Graph GRU & 0.1388 & 0.0608 & 5.6556 & 6.4670 & 0.9036 & 0.9584 \\
 \midrule
 \multirow{3}{*}{benzene} & Flat Koopman & 0.0886 & 0.1502 & 7.4919 & 5.8504 & 1.0000 & 0.8744 \\
@@ -723,7 +723,7 @@ n-body (springs) & 467,151 & 93,264 & 114,128 \\
 \midrule
 \multirow{3}{*}{at-at} & Flat Koopman & 3.6341 & 0.2880 & 28.6583 & 41.0566 & 0.9709 & 0.9972 \\
  & Graph Koopman & 6.2917 & 0.0295 & 0.3275 & 0.5732 & 1.0000 & 0.9868 \\
- & Graph GRU & 2.6246 & 0.3740 & 24.9426 & 34.4856 & 0.6333 & 0.8675 \\
+ & Graph GRU & 3.2551 & 0.3740 & 24.9426 & 34.4856 & 0.6333 & 0.8675 \\
 \midrule
 \multirow{3}{*}{n-body (charged)} & Flat Koopman & 0.6764 & 0.3613 & 23.3443 & 45.2536 & 1.0000 & 0.9910 \\
  & Graph Koopman & 0.6484 & 0.0346 & 2.1319 & 5.9977 & 1.0000 & 0.9988 \\

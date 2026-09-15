@@ -38,7 +38,7 @@ Default weights are **fixed** at **10 / 1 / 2 / 5** (reconstruction / dynamics /
 
 ### 1. Multi-seed robustness (P3, seeds {42, 1337, 2026})
 
-Bond / angle / torsion = **decoded t=0 drift**, not vs GT. Baselines are **not** an identical-objective bake-off (G-GRU uses 4-step dyn unroll; Flat-K drops iso). **P3** = Table 2 3-seed aggregate; **P1** = appendix single-seed sweep (`sweep_20260716_161829`) — do not cite P1 cells as multi-seed means. Springs MSE is recomputed from nbody twins (`multiseed_results_nbody*.txt`; sample std). Old headline `0.0531±0.0015` is retired.
+Bond / angle / torsion = **decoded t=0 drift**, not vs GT. Baselines are **not** an identical-objective bake-off (G-GRU uses 4-step dyn unroll; Flat-K drops iso). **P3** = Table 2 3-seed aggregate; **P1** = appendix single-seed sweep (`sweep_20260716_161829`) — do not cite P1 cells as multi-seed means. Springs MSE is mean±sample stdev from 3-seed nbody logs (`multiseed_results_nbody*.txt`, seeds {42,1337,2026}).
 
 | System | Model | Rollout MSE (29-step) | Bond Drift (Å) | Angle Drift (°) | Torsion Drift (°) | Physical Coord Edge Ratio ($R_{\text{edge}}$) |
 |:---|:---|:---:|:---:|:---:|:---:|:---:|
