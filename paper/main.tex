@@ -84,7 +84,7 @@ Graph neural networks (GNNs) have emerged as a principal tool for simulating com
 
 During multi-step prediction, standard recurrent transitions (e.g., GRUs) and unconstrained message-passing updates systematically alter latent representation magnitudes. Without structural constraints on the transition operator, latent vector norms expand or contract, causing compounding \emph{latent drift}. Physically, this degradation manifests as structural distortion: on springs, Graph-GRU decoded $t=0$ bond drift is $0.6167\pm 0.0131$\,\AA\ and angle drift $46.5105\pm 0.8687^\circ$ (Table~\ref{tab:multiseed}, P3), and unconstrained latent-norm ratios diverge up to $109.5\times$ on \texttt{ac-ala3-nhme} (Section~\ref{sec:experiments}).
 
-Crucially, standard evaluation metrics often fail to reflect this physical degradation. We observe an \emph{MSE paradox}: on the $N$-body \texttt{springs} benchmark, a Graph GRU obtains a lower P3 rollout MSE ($0.0455 \pm 0.0185$, with individual runs reaching $2.56\times10^{-2}$) than our proposed model ($0.1768 \pm 0.0030$), even as its P3 $t=0$ bond/angle/torsion drift and $R_{\text{edge}}=1.6290$ show large decoded expansion (Table~\ref{tab:multiseed}). Mean squared error can reward models that collapse toward spatial centroids or expand uniformly, neither of which preserves inter-atomic topology.
+Crucially, standard evaluation metrics often fail to reflect this physical degradation. We observe an \emph{MSE paradox}: on the $N$-body \texttt{springs} benchmark, a Graph GRU obtains a lower P3 rollout MSE ($0.0455 \pm 0.0185$, with individual runs reaching $2.63\times10^{-2}$) than our proposed model ($0.1768 \pm 0.0030$), even as its P3 latent-norm ratio reaches $2.16\times$ and $t=0$ bond/angle/torsion drift and $R_{\text{edge}}=1.6290$ show large decoded expansion (Table~\ref{tab:multiseed}). Mean squared error can reward models that collapse toward spatial centroids or expand uniformly, neither of which preserves inter-atomic topology.
 
 These observations suggest a clear hypothesis: \emph{constraining the latent transition to preserve vector norms and volume will prevent unbounded latent-norm drift;} decoded topology may then drift less, which we treat as empirical.
 
@@ -358,7 +358,7 @@ Never cite a P1 cell as a multi-seed mean.
  & Graph GRU & 2.6390 $\pm$ 0.1575 & 0.2514 $\pm$ 0.0379 & 17.9786 $\pm$ 1.9597 & 26.3741 $\pm$ 3.1289 & 0.8675 \\
 \midrule
 \multirow{3}{*}{springs}
- & Flat Koopman & 0.1756 $\pm$ 0.0007 & 0.1075 $\pm$ 0.0255 & 14.5514 $\pm$ 2.8748 & 29.3838 $\pm$ 5.5636 & 0.9827 \\
+ & Flat Koopman & 0.1762 $\pm$ 0.0011 & 0.1075 $\pm$ 0.0255 & 14.5514 $\pm$ 2.8748 & 29.3838 $\pm$ 5.5636 & 0.9827 \\
  & Graph Koopman & 0.1768 $\pm$ 0.0030 & 0.0248 $\pm$ 0.0092 & 2.5892 $\pm$ 1.0129 & 6.0530 $\pm$ 1.7870 & 1.0112 \\
  & Graph GRU & 0.0455 $\pm$ 0.0185 & 0.6167 $\pm$ 0.0131 & 46.5105 $\pm$ 0.8687 & 80.2149 $\pm$ 0.9485 & 1.6290 \\
 \bottomrule
@@ -396,7 +396,7 @@ AT-AT (MD22) & $9.18\times 10^{-2}$ & $2.55\times 10^{-4}$ \\
 \subsection{Case Studies: Dissecting the MSE Paradox}
 \label{sec:mse_paradox}
 
-\paragraph{$N$-body springs.} On springs (Table~\ref{tab:multiseed}, P3),\footnote{Springs MSE: mean $\pm$ sample stdev over seeds $\{42,1337,2026\}$ from \texttt{multiseed\_results\_nbody.txt} (seeds 42, 1337) and \texttt{multiseed\_results\_nbody\_2026.txt} (seed 2026).} \GGRU{} has lower rollout MSE ($0.0455 \pm 0.0185$; individual runs reaching $2.56\times10^{-2}$) than \GKE{} ($0.1768 \pm 0.0030$). Structural quotes are the same P3 cells: bond $0.6167\pm 0.0131$\,\AA, angle $46.5105\pm 0.8687^\circ$, torsion $80.2149\pm 0.9485^\circ$, $R_{\text{edge}}=1.6290$ (decoded $t=0$ drift). That is the MSE-versus-topology diagnostic: MSE can reward near-uniform expansion.
+\paragraph{$N$-body springs.} On springs (Table~\ref{tab:multiseed}, P3),\footnote{Springs MSE: mean $\pm$ sample stdev over seeds $\{42,1337,2026\}$ from \texttt{multiseed\_results\_nbody.txt} (seeds 42, 1337) and \texttt{multiseed\_results\_nbody\_2026.txt} (seed 2026). G-GRU latent-norm $2.16\times$ is the P3 mean of Phase-9 ratios $2.1234$/$2.1141$/$2.2342$.} \GGRU{} has lower rollout MSE ($0.0455 \pm 0.0185$; individual runs reaching $2.63\times10^{-2}$) than \GKE{} ($0.1768 \pm 0.0030$), with P3 latent-norm ratio $2.16\times$. Structural quotes are the same P3 cells: bond $0.6167\pm 0.0131$\,\AA, angle $46.5105\pm 0.8687^\circ$, torsion $80.2149\pm 0.9485^\circ$, $R_{\text{edge}}=1.6290$ (decoded $t=0$ drift). That is the MSE-versus-topology diagnostic: MSE can reward near-uniform expansion.
 
 \paragraph{MD22 AT-AT.} \GGRU{} $R_{\text{norm}}$ contracts ($0.63\times$); unconstrained \EGNN{} expands ($5.83\times$). \GKE{}/\EGKN{} keep latent $R_{\text{norm}}=1$ by the $SO(n)$ parameterization. Decoded $t=0$ topology scores remain empirical (Limitation~1).
 
@@ -628,24 +628,12 @@ The standard evaluation metric $\rho(\K_{\text{global}})$ reports the spectral r
 \section{Full Per-System Results}
 \label{app:full_results}
 
-% NEED_LOG (Mac; do not invent). Sweep/multiseed bytes are not on this VM.
-%   eval_logs/sweep_20260716_161829.txt  OR  results/sweep_20260716_161829.txt
-%   eval_logs/multiseed_results.txt (prior copy truncated mid-springs seed 42)
-%   eval_logs/multiseed_results_nbody.txt (seeds 42, 1337)
-%   eval_logs/multiseed_results_nbody_2026.txt (seed 2026)
-% Unpasted P1 MSE from NUMBERS-BIBLE-VERIFY sweep excerpts only:
-%   aspirin Graph Koopman 0.2411 → 0.2350 (sweep L249 0.234992)
-%   AT-AT Graph GRU 2.6246 → 3.2551 (sweep L3257 3.255117)
-%   springs Graph Koopman 0.1764 → 0.1788 (sweep L3757 0.178751)
-%   springs Graph GRU 0.0531 → 0.0256 (sweep L3758 0.025578)
-% Remaining P1 MSE that still equal Table 2 P3 means (await full sweep file):
-%   aspirin Flat 0.0715, aspirin G-GRU 0.1388
-%   malonaldehyde 0.4002 / 0.9151 / 0.3532
-%   at-at Flat 3.6341, at-at Graph Koopman 6.2917
-%   springs Flat 0.1756
-% NEED_LOG Coord R_edge: Phase-9 prints latent-norm ratio, not coord R_edge.
-% NEED_LOG Wilcoxon pairing grid: P3 vs P1 unknown.
-% NEED_LOG App D noreg: eval_logs/rebuttal_1LAu_aspirin.log, rebuttal_1LAu_expand.log
+% NEED_LOG (do not invent; listed in PR body):
+%   Coord R_edge (Tab2 / Tab7–8): Phase-9 prints latent-norm ratio only.
+%   Abstract/§4.7 1.63× coordinate edge: same.
+%   App D noreg: eval_logs/rebuttal_1LAu_aspirin.log, rebuttal_1LAu_expand.log
+%   Wilcoxon pairing grid (P3 vs P1 unknown)
+% Appendix Tables 7–8 MSE columns replaced from PAPER-NUMBER-FIXES (42 P1 sweep cells).
 
 We report parameter counts and rollout metrics for Flat Koopman, Graph Koopman, and Graph GRU across 14 systems. Table~\ref{tab:app_params} is parameter scaling. Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22} are \textbf{P1} single-seed sweep cells (not P3 means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT.
 
@@ -677,78 +665,78 @@ n-body (springs) & 467,151 & 93,264 & 114,128 \\
 
 \begin{table}[htbp]
 \centering
-\caption{Single-seed sweep (P1) from \texttt{sweep\_20260716\_161829}: MD17 systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Colliding cells with Table~\ref{tab:multiseed} (P3) are expected. Aspirin Graph-Koopman MSE $0.2350$ is the sweep cell (not the P3 mean $0.2411$). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. $R_{\text{edge}}$ is relative to decoded $t=0$.}
+\caption{Single-seed sweep (P1) from \texttt{sweep\_20260716\_161829}: MD17 systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Colliding cells with Table~\ref{tab:multiseed} (P3) are expected. MSE column is Phase-9 sweep rollout MSE (not P3 means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. $R_{\text{edge}}$ is relative to decoded $t=0$.}
 \label{tab:app_results_md17}
 \resizebox{\textwidth}{!}{
 \begin{tabular}{llrrrrrr}
 \toprule
 \textbf{System} & \textbf{Model} & \textbf{MSE} & \textbf{Bond (\AA)} & \textbf{Angle ($^\circ$)} & \textbf{Torsion ($^\circ$)} & \textbf{Latent $R_{\text{norm}}$} & \textbf{Coord $R_{\text{edge}}$} \\
 \midrule
-\multirow{3}{*}{aspirin} & Flat Koopman & 0.0715 & 0.0793 & 4.2965 & 4.6356 & 0.9999 & 0.9707 \\
+\multirow{3}{*}{aspirin} & Flat Koopman & 0.0614 & 0.0793 & 4.2965 & 4.6356 & 0.9999 & 0.9707 \\
  & Graph Koopman & 0.2350 & 0.0070 & 0.0992 & 0.2210 & 1.0000 & 0.9974 \\
- & Graph GRU & 0.1388 & 0.0608 & 5.6556 & 6.4670 & 0.9036 & 0.9584 \\
+ & Graph GRU & 0.1214 & 0.0608 & 5.6556 & 6.4670 & 0.9036 & 0.9584 \\
 \midrule
-\multirow{3}{*}{benzene} & Flat Koopman & 0.0886 & 0.1502 & 7.4919 & 5.8504 & 1.0000 & 0.8744 \\
- & Graph Koopman & 0.8639 & 0.0057 & 0.3491 & 0.5377 & 1.0000 & 0.9924 \\
- & Graph GRU & 0.0378 & 0.0803 & 3.6982 & 2.2197 & 0.7280 & 0.9554 \\
+\multirow{3}{*}{benzene} & Flat Koopman & 0.1011 & 0.1502 & 7.4919 & 5.8504 & 1.0000 & 0.8744 \\
+ & Graph Koopman & 0.8057 & 0.0057 & 0.3491 & 0.5377 & 1.0000 & 0.9924 \\
+ & Graph GRU & 0.0401 & 0.0803 & 3.6982 & 2.2197 & 0.7280 & 0.9554 \\
 \midrule
-\multirow{3}{*}{ethanol} & Flat Koopman & 0.1962 & 0.1849 & 11.3877 & 15.1583 & 1.0000 & 0.9233 \\
- & Graph Koopman & 0.5986 & 0.0462 & 0.4722 & 0.4280 & 1.0000 & 0.9576 \\
- & Graph GRU & 0.1593 & 0.0922 & 3.8021 & 2.5854 & 0.8419 & 0.9206 \\
+\multirow{3}{*}{ethanol} & Flat Koopman & 0.2016 & 0.1849 & 11.3877 & 15.1583 & 1.0000 & 0.9233 \\
+ & Graph Koopman & 0.5810 & 0.0462 & 0.4722 & 0.4280 & 1.0000 & 0.9576 \\
+ & Graph GRU & 0.1555 & 0.0922 & 3.8021 & 2.5854 & 0.8419 & 0.9206 \\
 \midrule
-\multirow{3}{*}{malonaldehyde} & Flat Koopman & 0.4002 & 0.1488 & 8.9481 & 15.7820 & 1.0000 & 0.9367 \\
- & Graph Koopman & 0.9151 & 0.0713 & 0.3029 & 0.5664 & 1.0000 & 0.9416 \\
- & Graph GRU & 0.3532 & 0.0595 & 2.9423 & 4.3160 & 0.9285 & 0.9262 \\
+\multirow{3}{*}{malonaldehyde} & Flat Koopman & 0.3849 & 0.1488 & 8.9481 & 15.7820 & 1.0000 & 0.9367 \\
+ & Graph Koopman & 0.7545 & 0.0713 & 0.3029 & 0.5664 & 1.0000 & 0.9416 \\
+ & Graph GRU & 0.3663 & 0.0595 & 2.9423 & 4.3160 & 0.9285 & 0.9262 \\
 \midrule
-\multirow{3}{*}{naphthalene} & Flat Koopman & 0.0238 & 0.0655 & 1.2827 & 1.8633 & 0.9998 & 0.9371 \\
- & Graph Koopman & 0.0232 & 0.0082 & 0.1118 & 0.1587 & 1.0000 & 0.9925 \\
- & Graph GRU & 0.0109 & 0.0514 & 0.7937 & 1.4631 & 0.8766 & 0.9721 \\
+\multirow{3}{*}{naphthalene} & Flat Koopman & 0.0153 & 0.0655 & 1.2827 & 1.8633 & 0.9998 & 0.9371 \\
+ & Graph Koopman & 0.0176 & 0.0082 & 0.1118 & 0.1587 & 1.0000 & 0.9925 \\
+ & Graph GRU & 0.0103 & 0.0514 & 0.7937 & 1.4631 & 0.8766 & 0.9721 \\
 \midrule
-\multirow{3}{*}{salicylic} & Flat Koopman & 0.0434 & 0.0516 & 2.0217 & 3.1501 & 0.9998 & 0.9296 \\
- & Graph Koopman & 0.6711 & 0.0117 & 0.3196 & 0.7558 & 1.0000 & 0.9990 \\
- & Graph GRU & 0.0240 & 0.0218 & 1.2715 & 1.0959 & 0.9580 & 0.9675 \\
+\multirow{3}{*}{salicylic} & Flat Koopman & 0.0353 & 0.0516 & 2.0217 & 3.1501 & 0.9998 & 0.9296 \\
+ & Graph Koopman & 0.7111 & 0.0117 & 0.3196 & 0.7558 & 1.0000 & 0.9990 \\
+ & Graph GRU & 0.0202 & 0.0218 & 1.2715 & 1.0959 & 0.9580 & 0.9675 \\
 \midrule
-\multirow{3}{*}{toluene} & Flat Koopman & 0.1123 & 0.1515 & 6.6289 & 8.8714 & 0.9999 & 0.9064 \\
- & Graph Koopman & 0.7011 & 0.0171 & 0.6696 & 1.5430 & 1.0000 & 0.9720 \\
- & Graph GRU & 0.0966 & 0.0415 & 1.6042 & 2.3985 & 0.8988 & 0.9540 \\
+\multirow{3}{*}{toluene} & Flat Koopman & 0.1472 & 0.1515 & 6.6289 & 8.8714 & 0.9999 & 0.9064 \\
+ & Graph Koopman & 0.6270 & 0.0171 & 0.6696 & 1.5430 & 1.0000 & 0.9720 \\
+ & Graph GRU & 0.1050 & 0.0415 & 1.6042 & 2.3985 & 0.8988 & 0.9540 \\
 \midrule
-\multirow{3}{*}{uracil} & Flat Koopman & 0.0465 & 0.1684 & 3.7764 & 4.1588 & 1.0000 & 0.8889 \\
- & Graph Koopman & 0.3435 & 0.0046 & 0.1494 & 0.2858 & 1.0000 & 0.9981 \\
- & Graph GRU & 0.0163 & 0.0482 & 1.3092 & 1.3362 & 0.8651 & 0.9547 \\
+\multirow{3}{*}{uracil} & Flat Koopman & 0.0452 & 0.1684 & 3.7764 & 4.1588 & 1.0000 & 0.8889 \\
+ & Graph Koopman & 0.4327 & 0.0046 & 0.1494 & 0.2858 & 1.0000 & 0.9981 \\
+ & Graph GRU & 0.0179 & 0.0482 & 1.3092 & 1.3362 & 0.8651 & 0.9547 \\
 \bottomrule
 \end{tabular}}
 \end{table}
 
 \begin{table}[htbp]
 \centering
-\caption{Single-seed sweep (P1) from \texttt{sweep\_20260716\_161829}: MD22 and N-body systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Colliding cells with Table~\ref{tab:multiseed} (P3) are expected. AT-AT Graph-GRU MSE $3.2551$ and springs MSE $0.1788$/$0.0256$ are sweep cells (not P3 means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. $R_{\text{edge}}$ is relative to decoded $t=0$.}
+\caption{Single-seed sweep (P1) from \texttt{sweep\_20260716\_161829}: MD22 and N-body systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Colliding cells with Table~\ref{tab:multiseed} (P3) are expected. MSE column is Phase-9 sweep rollout MSE (not P3 means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. $R_{\text{edge}}$ is relative to decoded $t=0$.}
 \label{tab:app_results_md22}
 \resizebox{\textwidth}{!}{
 \begin{tabular}{llrrrrrr}
 \toprule
 \textbf{System} & \textbf{Model} & \textbf{MSE} & \textbf{Bond (\AA)} & \textbf{Angle ($^\circ$)} & \textbf{Torsion ($^\circ$)} & \textbf{Latent $R_{\text{norm}}$} & \textbf{Coord $R_{\text{edge}}$} \\
 \midrule
-\multirow{3}{*}{stachyose} & Flat Koopman & 2.2689 & 0.4611 & 48.0266 & 53.0592 & 0.9610 & 0.7275 \\
- & Graph Koopman & 7.3418 & 0.0133 & 0.7405 & 1.2178 & 1.0000 & 0.9960 \\
- & Graph GRU & 1.1468 & 0.1465 & 11.4753 & 14.3737 & 0.9312 & 0.8898 \\
+\multirow{3}{*}{stachyose} & Flat Koopman & 5.0692 & 0.4611 & 48.0266 & 53.0592 & 0.9610 & 0.7275 \\
+ & Graph Koopman & 1.9520 & 0.0133 & 0.7405 & 1.2178 & 1.0000 & 0.9960 \\
+ & Graph GRU & 1.2673 & 0.1465 & 11.4753 & 14.3737 & 0.9312 & 0.8898 \\
 \midrule
-\multirow{3}{*}{ac-ala3-nhme} & Flat Koopman & 2.1746 & 0.3109 & 27.6694 & 39.7177 & 0.9977 & 0.8424 \\
- & Graph Koopman & 2.5090 & 0.0301 & 1.0744 & 2.3260 & 1.0000 & 0.9441 \\
- & Graph GRU & 0.4912 & 0.0989 & 5.5239 & 8.7518 & 0.8989 & 0.9122 \\
+\multirow{3}{*}{ac-ala3-nhme} & Flat Koopman & 1.2724 & 0.3109 & 27.6694 & 39.7177 & 0.9977 & 0.8424 \\
+ & Graph Koopman & 1.9273 & 0.0301 & 1.0744 & 2.3260 & 1.0000 & 0.9441 \\
+ & Graph GRU & 0.4012 & 0.0989 & 5.5239 & 8.7518 & 0.8989 & 0.9122 \\
 \midrule
-\multirow{3}{*}{dha} & Flat Koopman & 3.2020 & 0.4839 & 44.3382 & 58.0033 & 0.9753 & 0.7741 \\
- & Graph Koopman & 3.2845 & 0.1024 & 1.0102 & 2.0399 & 1.0000 & 0.9623 \\
- & Graph GRU & 1.2871 & 0.1137 & 7.4557 & 15.2040 & 0.8485 & 0.8822 \\
+\multirow{3}{*}{dha} & Flat Koopman & 4.0158 & 0.4839 & 44.3382 & 58.0033 & 0.9753 & 0.7741 \\
+ & Graph Koopman & 3.9058 & 0.1024 & 1.0102 & 2.0399 & 1.0000 & 0.9623 \\
+ & Graph GRU & 1.1227 & 0.1137 & 7.4557 & 15.2040 & 0.8485 & 0.8822 \\
 \midrule
-\multirow{3}{*}{at-at} & Flat Koopman & 3.6341 & 0.2880 & 28.6583 & 41.0566 & 0.9709 & 0.9972 \\
- & Graph Koopman & 6.2917 & 0.0295 & 0.3275 & 0.5732 & 1.0000 & 0.9868 \\
+\multirow{3}{*}{at-at} & Flat Koopman & 1.8776 & 0.2880 & 28.6583 & 41.0566 & 0.9709 & 0.9972 \\
+ & Graph Koopman & 7.6751 & 0.0295 & 0.3275 & 0.5732 & 1.0000 & 0.9868 \\
  & Graph GRU & 3.2551 & 0.3740 & 24.9426 & 34.4856 & 0.6333 & 0.8675 \\
 \midrule
-\multirow{3}{*}{n-body (charged)} & Flat Koopman & 0.6764 & 0.3613 & 23.3443 & 45.2536 & 1.0000 & 0.9910 \\
- & Graph Koopman & 0.6484 & 0.0346 & 2.1319 & 5.9977 & 1.0000 & 0.9988 \\
- & Graph GRU & 0.7072 & 0.0928 & 4.5293 & 10.6446 & 1.4001 & 1.3161 \\
+\multirow{3}{*}{n-body (charged)} & Flat Koopman & 2.1350 & 0.3613 & 23.3443 & 45.2536 & 1.0000 & 0.9910 \\
+ & Graph Koopman & 2.0397 & 0.0346 & 2.1319 & 5.9977 & 1.0000 & 0.9988 \\
+ & Graph GRU & 2.0120 & 0.0928 & 4.5293 & 10.6446 & 1.4001 & 1.3161 \\
 \midrule
-\multirow{3}{*}{n-body (springs)} & Flat Koopman & 0.1756 & 0.1015 & 13.2142 & 27.6922 & 1.0000 & 0.9827 \\
+\multirow{3}{*}{n-body (springs)} & Flat Koopman & 0.1709 & 0.1015 & 13.2142 & 27.6922 & 1.0000 & 0.9827 \\
  & Graph Koopman & 0.1788 & 0.0182 & 2.0582 & 5.4004 & 1.0000 & 1.0112 \\
  & Graph GRU & 0.0256 & 0.5711 & 45.1807 & 79.2633 & 1.9794 & 1.6290 \\
 \bottomrule
