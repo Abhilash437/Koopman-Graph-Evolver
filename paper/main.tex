@@ -151,7 +151,7 @@ Let $\mathcal{G}_t = (\mathcal{V}, \mathcal{E}, \x_t)$ be a graph with node 3D c
 \subsection{Koopman Graph Evolver Architecture}
 
 \paragraph{GNN Encoder.}
-A message-passing GNN $\phi_\theta$ embeds the spatial graph into node-level latent representations: $\mathbf{H}_t = \phi_\theta(\mathcal{G}_t) \in \R^{N \times d}$. The reported encoder is a \emph{2-layer} edge-conditioned MPNN with hidden dimension $d=64$ (not a 4-layer GCN). Node embeddings are \emph{concatenated} into a graph-level state $\mathbf{s}_t = [\mathbf{h}_{t,1}; \dots; \mathbf{h}_{t,N}] \in \R^{Nd}$ --- this is not global pooling. A legacy node-wise $64\times 64$ cell (\texttt{GraphKoopmanNet}) exists in the repository but is not CLI-wired and is \emph{not} the reported model.
+A message-passing GNN $\phi_\theta$ embeds the spatial graph into node-level latent representations: $\mathbf{H}_t = \phi_\theta(\mathcal{G}_t) \in \R^{N \times d}$. The reported encoder is a \emph{2-layer} edge-conditioned MPNN with hidden dimension $d=64$ (not a 4-layer GCN). Node embeddings are \emph{concatenated} into a graph-level state $\mathbf{s}_t = [\mathbf{h}_{t,1}; \dots; \mathbf{h}_{t,N}] \in \R^{Nd}$ --- this is not global pooling. A legacy node-wise $64\times 64$ cell exists in the repository but is \emph{not} the reported model.
 
 \paragraph{Koopman Transition Operator.}
 Instead of non-linear recurrent cells (which lack spectral bounds) or continuous ODE integration (which incurs numerical drift), temporal evolution is performed linearly in the lifted latent space:
@@ -170,7 +170,7 @@ where $\mathbf{A}_{\text{self}}, \mathbf{A}_{\text{edge}} \in \R^{d \times d}$ a
 A multi-layer perceptron $\psi_\theta: \R^{Nd} \to \R^{N \times 3}$ maps the evolved graph state vector $\mathbf{s}_{t+1}$ to the 3D coordinates of all $N$ nodes simultaneously: $\hat{\x}_{t+1} = \psi_\theta(\mathbf{s}_{t+1})$. Node identity is implicitly encoded by each node's fixed position within the concatenated vector (node $i$ always occupies indices $[id, (i{+}1)d)$). Because the decoder operates on an ordered concatenated vector, it is not permutation-equivariant; however, molecular graphs have canonical atom orderings, making this design appropriate for the benchmarks considered. For the equivariant extension (E-GKN), the decoder is instead an EGNN message-passing layer that preserves $SE(3)$ equivariance (Section~\ref{sec:egkn}).
 
 \paragraph{Training Objective.}
-The trainer (\texttt{GraphAwareKoopmanNet.compute\_loss}) uses a multi-task objective with \emph{fixed} weights---no epoch-annealed $\lambda$:
+The reported model is trained with a multi-task objective with \emph{fixed} weights---no epoch-annealed $\lambda$:
 \begin{equation}
   \label{eq:total_loss}
   \mathcal{L}_{\text{total}} = 10.0\,\mathcal{L}_{\text{recon}} + 1.0\,\mathcal{L}_{\text{dyn}} + 2.0\,\mathcal{L}_{\text{collapse}} + 5.0\,\mathcal{L}_{\text{iso}}.
@@ -272,20 +272,20 @@ To evaluate whether an orthogonal latent transition changes multi-step $t=0$-dri
 \end{itemize}
 
 \paragraph{Loss asymmetries (not an identical-objective bake-off).}
-Isolation of the temporal cell is the design; identical training objectives are not. \GGRU{} trains $\mathcal{L}_{\text{dyn}}$ with a 4-step latent unroll (\texttt{unroll\_steps=4}); \GKE{} uses single-step latent consistency. \FKoop{} omits $\mathcal{L}_{\text{iso}}$ (no bonded-graph term). \textsc{SEGNO} zeros $\mathcal{L}_{\text{collapse}}$. Do not read the tables as ``same recipe, swap the cell.''
+Isolation of the temporal cell is the design; identical training objectives are not. \GGRU{} trains $\mathcal{L}_{\text{dyn}}$ with a 4-step latent unroll; \GKE{} uses single-step latent consistency. \FKoop{} omits $\mathcal{L}_{\text{iso}}$ (no bonded-graph term). \textsc{SEGNO} zeros $\mathcal{L}_{\text{collapse}}$. Do not read the tables as ``same recipe, swap the cell.''
 
 \paragraph{Decoded $t=0$ topology metrics.}
-In addition to standard rollout MSE at step $k=29$, we compute structural topology metrics at the final prediction step. Bond, angle, and torsion scores measure \emph{drift of the decoded rollout from its own decoded $t=0$ frame}, not error versus ground-truth topology (\texttt{physics\_eval.py}; no new GT metric is introduced here):
+In addition to standard rollout MSE at step $k=29$, we compute structural topology metrics at the final prediction step. Bond, angle, and torsion scores measure \emph{drift of the decoded rollout from its own decoded $t=0$ frame}, not error versus ground-truth topology:
 \begin{itemize}
   \item \textbf{Bond Drift (\AA):} Mean absolute change in inter-atomic bond lengths relative to the trajectory's decoded $t=0$ coordinates.
   \item \textbf{Angle Drift ($^\circ$):} Mean absolute change in 3-body bond angles relative to decoded $t=0$.
   \item \textbf{Torsion Drift ($^\circ$):} Mean absolute change in 4-body dihedral angles relative to decoded $t=0$.
   \item \textbf{Latent Norm Ratio ($R_{\text{norm}}$):} The ratio of mean latent representation norms at step $T$ versus $t=0$, $R_{\text{norm}} = \frac{\mathbb{E}[\| \mathbf{h}_{t=T} \|_2^2]}{\mathbb{E}[\| \mathbf{h}_{t=0} \|_2^2]}$. For \GKE{}, $R_{\text{norm}} = 1$ in latent feature space is architectural $SO(n)$ (Theorem~\ref{thm:so_n}.iii), not a trained energy.
-  \item \textbf{Decoded Coordinate Edge Ratio ($R_{\text{edge}}$):} The ratio of total physical inter-atomic bond distances in 3D coordinate space between step $T$ and decoded step $0$, $R_{\text{edge}} = \frac{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(T) - \hat{\mathbf{x}}_j(T)\|}{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(0) - \hat{\mathbf{x}}_j(0)\|}$. Because the coordinate decoder is a non-linear mapping, $R_{\text{edge}}$ is not mathematically mandated to be identically $1.0000$. $\mathcal{L}_{\text{iso}}$ additionally pushes bonded distances during training. Sourced $R_{\text{edge}}$ values are those with Option-B dumps (Appendix~\ref{app:loss_ablation}). Springs \GGRU{} coord $R_{\text{edge}}$ is omitted (no Phase-9 Option-B dump).
+  \item \textbf{Decoded Coordinate Edge Ratio ($R_{\text{edge}}$):} The ratio of total physical inter-atomic bond distances in 3D coordinate space between step $T$ and decoded step $0$, $R_{\text{edge}} = \frac{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(T) - \hat{\mathbf{x}}_j(T)\|}{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(0) - \hat{\mathbf{x}}_j(0)\|}$. Because the coordinate decoder is a non-linear mapping, $R_{\text{edge}}$ is not mathematically mandated to be identically $1.0000$. $\mathcal{L}_{\text{iso}}$ additionally pushes bonded distances during training. Springs \GGRU{} $R_{\text{edge}}$ is omitted (not available for that baseline).
 \end{itemize}
 
 \paragraph{Training Protocol.}
-All models are trained for 100 epochs with \textbf{AdamW} ($\text{lr}=10^{-3}$, weight decay $10^{-4}$). There is \textbf{no cosine schedule}. The CLI default batch size is 16; some launch scripts use 32 for MD17/$N$-body and 16 for MD22 (Table~\ref{tab:hyperparams_summary}). Checkpoints are selected on validation $R^2$. Multi-seed training uses $\{42, 1337, 2026\}$. \GGRU{} $\mathcal{L}_{\text{dyn}}$ uses \texttt{unroll\_steps=4}.
+All models are trained for 100 epochs with \textbf{AdamW} ($\text{lr}=10^{-3}$, weight decay $10^{-4}$). There is \textbf{no cosine schedule}. Batch size is 16, or 32 for some MD17/$N$-body runs and 16 for MD22 (Table~\ref{tab:hyperparams_summary}). Checkpoints are selected on validation $R^2$. Multi-seed training uses $\{42, 1337, 2026\}$. \GGRU{} $\mathcal{L}_{\text{dyn}}$ uses a 4-step unroll.
 
 \subsection{Main Results: Structural Drift Mitigation}
 \label{sec:main_results}
@@ -323,7 +323,7 @@ Coarse coordinate-norm retention is weaker ($p=0.076$). Wilcoxon is not a substi
 
 To confirm that performance gains are robust across random weight initializations and not artifacts of seed selection, we conduct multi-seed training and evaluation across random seeds ($\{42, 1337, 2026\}$) for all 14 physical dynamical systems across all three ablation models (\GKE{}, \GGRU{}, and \FKoop{}).
 
-Table~\ref{tab:multiseed} summarizes representative systems: aspirin, malonaldehyde, AT-AT, and springs (3-seed aggregate). Full 14-system \emph{single-seed} rows are Appendix Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22}; colliding cells are expected and are not the 3-seed means.
+Table~\ref{tab:multiseed} summarizes representative systems: aspirin, malonaldehyde, AT-AT, and springs (3-seed aggregate). Full 14-system \emph{single-seed} rows are Appendix Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22}; differences from the 3-seed table are expected (different protocol).
 
 \paragraph{Evaluation protocols.}
 \textbf{3-seed aggregate:} train+eval mean$\pm$std over seeds $\{42, 1337, 2026\}$ (Table~\ref{tab:multiseed}).
@@ -335,7 +335,7 @@ Never cite a single-seed appendix cell as a multi-seed mean.
 
 \begin{table}[htbp]
 \centering
-\caption{3-seed aggregate, seeds $\{42, 1337, 2026\}$. Springs MSE is mean$\pm$sample stdev over those seeds. Other $\pm$ in this table are as previously reported (population std). Bond/angle/torsion columns are mean absolute drift from the trajectory's own decoded $t=0$ frame, not vs.\ ground-truth topology. $R_{\text{edge}}$ is likewise relative to decoded $t=0$ except springs \GGRU{}, which is omitted (no Phase-9 Option-B dump).}
+\caption{3-seed aggregate, seeds $\{42, 1337, 2026\}$. Springs MSE is mean$\pm$sample standard deviation over those seeds; other $\pm$ values are population standard deviation. Bond/angle/torsion columns are mean absolute drift from the trajectory's own decoded $t=0$ frame, not vs.\ ground-truth topology. $R_{\text{edge}}$ is likewise relative to decoded $t=0$ except springs \GGRU{}, which is omitted.}
 \label{tab:multiseed}
 \resizebox{\textwidth}{!}{
 \begin{tabular}{llrrrrr}
@@ -396,7 +396,7 @@ AT-AT (MD22) & $9.18\times 10^{-2}$ & $2.55\times 10^{-4}$ \\
 \subsection{Case Studies: Dissecting the MSE Paradox}
 \label{sec:mse_paradox}
 
-\paragraph{$N$-body springs.} On springs (Table~\ref{tab:multiseed}),\footnote{Springs MSE: mean $\pm$ sample stdev over seeds $\{42,1337,2026\}$. G-GRU latent-norm $2.16\times$ is the 3-seed mean of per-seed ratios $2.1234$/$2.1141$/$2.2342$.} \GGRU{} has lower rollout MSE ($0.0455 \pm 0.0185$; individual runs reaching $2.63\times10^{-2}$) than \GKE{} ($0.1768 \pm 0.0030$), with 3-seed latent-norm ratio $2.16\times$. Structural quotes are the same 3-seed cells: bond $0.6167\pm 0.0131$\,\AA, angle $46.5105\pm 0.8687^\circ$, torsion $80.2149\pm 0.9485^\circ$ (decoded $t=0$ drift). Springs \GGRU{} coord $R_{\text{edge}}$ is omitted (no Phase-9 Option-B dump). That is the MSE-versus-topology diagnostic: MSE can reward near-uniform expansion.
+\paragraph{$N$-body springs.} On springs (Table~\ref{tab:multiseed}), \GGRU{} has lower rollout MSE ($0.0455 \pm 0.0185$; individual runs reaching $2.63\times10^{-2}$) than \GKE{} ($0.1768 \pm 0.0030$), with 3-seed latent-norm ratio $2.16\times$. Structural quotes are the same 3-seed cells: bond $0.6167\pm 0.0131$\,\AA, angle $46.5105\pm 0.8687^\circ$, torsion $80.2149\pm 0.9485^\circ$ (decoded $t=0$ drift). Springs \GGRU{} $R_{\text{edge}}$ is omitted. That is the MSE-versus-topology diagnostic: MSE can reward near-uniform expansion.
 
 \paragraph{MD22 AT-AT.} \GGRU{} $R_{\text{norm}}$ contracts ($0.63\times$); unconstrained \EGNN{} expands ($5.83\times$). \GKE{}/\EGKN{} keep latent $R_{\text{norm}}=1$ by the $SO(n)$ parameterization. Decoded $t=0$ topology scores remain empirical (Limitation~1).
 
@@ -498,7 +498,7 @@ A linear orthogonal step on concatenated node embeddings (Kronecker $\K_{\text{g
 \paragraph{Optimization and further limitations.}
 Both \GKE{} and \EGKN{} often reach peak validation $R^2$ within 1--5 epochs; recurrent baselines may need more. Limitations~1--2 sit after Theorem~\ref{thm:so_n}. Additionally:
 \begin{enumerate}
-  \item \textbf{Reported architecture is Kronecker $\K_{\text{glob}}$.} Node embeddings are concatenated, not pooled. E-GKN uses the same shared Kronecker operator on invariant channels, not independent per-node cells. Legacy \texttt{GraphKoopmanNet} ($64\times 64$ node-wise) is not CLI-wired and is not this paper.
+  \item \textbf{Reported architecture is Kronecker $\K_{\text{glob}}$.} Node embeddings are concatenated, not pooled. E-GKN uses the same shared Kronecker operator on invariant channels, not independent per-node cells. A legacy node-wise $64\times 64$ cell in the repository is not the reported model.
   \item \textbf{G-GRU stabilizers and RDFs.} Appendix~\ref{app:gru_stabilizers} tests longer pushforward and latent noise on \GGRU{} (no symplectic integrators): under the full loss, they do not close the $t=0$ bond/angle/torsion gap to \GKE{} on MD17/MD22. Appendix~\ref{app:rdf_pilot}: absolute RDF often favors \GGRU{}; horizon $\Delta$L1 more often favors \GKE{}.
 \end{enumerate}
 
@@ -658,7 +658,7 @@ n-body (springs) & 467,151 & 93,264 & 114,128 \\
 
 \begin{table}[htbp]
 \centering
-\caption{Single-seed appendix sweep: MD17 systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Colliding cells with Table~\ref{tab:multiseed} (3-seed aggregate) are expected. MSE column is single-seed sweep rollout MSE (not 3-seed means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. $R_{\text{edge}}$ is relative to decoded $t=0$.}
+\caption{Single-seed appendix sweep: MD17 systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Differences from Table~\ref{tab:multiseed} (3-seed aggregate) are expected. MSE column is single-seed sweep rollout MSE (not 3-seed means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. $R_{\text{edge}}$ is relative to decoded $t=0$.}
 \label{tab:app_results_md17}
 \resizebox{\textwidth}{!}{
 \begin{tabular}{llrrrrrr}
@@ -702,7 +702,7 @@ n-body (springs) & 467,151 & 93,264 & 114,128 \\
 
 \begin{table}[htbp]
 \centering
-\caption{Single-seed appendix sweep: MD22 and N-body systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Colliding cells with Table~\ref{tab:multiseed} (3-seed aggregate) are expected. MSE column is single-seed sweep rollout MSE (not 3-seed means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. Springs \GGRU{} coord $R_{\text{edge}}$ is omitted (no Phase-9 Option-B dump); latent $R_{\text{norm}}=1.9794$ is the verified single-seed cell.}
+\caption{Single-seed appendix sweep: MD22 and N-body systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Differences from Table~\ref{tab:multiseed} (3-seed aggregate) are expected. MSE column is single-seed sweep rollout MSE (not 3-seed means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. Springs \GGRU{} $R_{\text{edge}}$ is omitted; latent $R_{\text{norm}}=1.9794$ is the single-seed value.}
 \label{tab:app_results_md22}
 \resizebox{\textwidth}{!}{
 \begin{tabular}{llrrrrrr}
@@ -742,19 +742,19 @@ n-body (springs) & 467,151 & 93,264 & 114,128 \\
 \label{app:hyperparams}
 
 \paragraph{Hyperparameter Tuning Protocol.}
-To avoid combinatorial compute overhead across all 14 datasets, hyperparameters were selected on representative systems (aspirin, DHA) from the ranges below. \textbf{Table~\ref{tab:hyperparams_summary} reports the trainer that produced the numbers}, not a paperwashed retrain:
+To avoid combinatorial compute overhead across all 14 datasets, hyperparameters were selected on representative systems (aspirin, DHA) from the ranges below. Table~\ref{tab:hyperparams_summary} lists the settings used for the reported numbers:
 \begin{itemize}[leftmargin=1.5em,itemsep=1pt,topsep=1pt]
   \item Initial learning rate: $\{1\times 10^{-4}, 5\times 10^{-4}, 1\times 10^{-3}, 2\times 10^{-3}\}$. The run uses constant $\mathrm{lr}=10^{-3}$ with \textbf{AdamW} (weight decay $10^{-4}$); \textbf{no cosine schedule}.
   \item Hidden feature dimension $d$: $\{32, 64, 128\}$ (selected $64$).
-  \item Message-passing layers: $\{2, 4, 6\}$. The reported \GKE{}/\GGRU{} encoder is \textbf{2 MPNN layers} (\texttt{EdgeConditionedConv}).
-  \item Batch size: $\{16, 32, 64\}$. \textbf{CLI default is 16}; \texttt{run\_all.sh} and some rebuttal scripts use 32 for MD17/$N$-body and 16 for MD22.
+  \item Message-passing layers: $\{2, 4, 6\}$. The reported \GKE{}/\GGRU{} encoder is \textbf{2 MPNN layers} (edge-conditioned).
+  \item Batch size: $\{16, 32, 64\}$. Reported runs use 16, or 32 for some MD17/$N$-body jobs and 16 for MD22.
   \item Multi-task loss weights: $\lambda_{\text{recon}} \in \{5.0, 10.0, 20.0\}$, $\lambda_{\text{dyn}} \in \{0.5, 1.0, 2.0\}$, $\lambda_{\text{collapse}} \in \{1.0, 2.0, 5.0\}$, $\lambda_{\text{iso}} \in \{2.0, 5.0, 10.0\}$ (selected $10/1/2/5$, fixed; no annealed $\lambda$).
 \end{itemize}
 Once selected, the configuration in Table~\ref{tab:hyperparams_summary} was held fixed. Baseline loss asymmetries (Section~\ref{sec:experiments}) still apply.
 
 \begin{table}[htbp]
 \centering
-\caption{Training hyperparameters of the \emph{reported} runs (CLI / \texttt{GraphAwareTrainer}), not a cosine/4-layer paperwash. Bond/angle/torsion eval is decoded $t=0$ drift.}
+\caption{Training hyperparameters of the reported runs (constant learning rate, 2-layer encoder). Bond/angle/torsion eval is decoded $t=0$ drift.}
 \label{tab:hyperparams_summary}
 \begin{tabular}{ll}
   \toprule
@@ -762,11 +762,11 @@ Once selected, the configuration in Table~\ref{tab:hyperparams_summary} was held
   \midrule
   Optimizer & AdamW ($\beta_1=0.9, \beta_2=0.999$), weight decay $10^{-4}$ \\
   Learning rate & $1\times 10^{-3}$ (constant; \textbf{no cosine}) \\
-  Batch size & CLI default 16; some scripts 32 (MD17/$N$-body) / 16 (MD22) \\
+  Batch size & 16, or 32 for some MD17/$N$-body runs / 16 for MD22 \\
   Training epochs & 100 \\
   Latent dimension $d$ & 64 \\
   \GKE{}/\GGRU{} MPNN layers & 2 \\
-  \GGRU{} \texttt{unroll\_steps} & 4 (single-step $\mathcal{L}_{\text{dyn}}$ for \GKE{}) \\
+  \GGRU{} dyn unroll & 4 steps (single-step $\mathcal{L}_{\text{dyn}}$ for \GKE{}) \\
   Loss weights $(\lambda_{\text{recon}}, \lambda_{\text{dyn}}, \lambda_{\text{collapse}}, \lambda_{\text{iso}})$ & $(10.0, 1.0, 2.0, 5.0)$ (fixed) \\
   Evaluation horizon & 29 rollout steps \\
   Random seeds & $\{42, 1337, 2026\}$ \\
@@ -788,7 +788,7 @@ To test whether reported structural metrics depend on these two terms, we retrai
 \end{equation}
 i.e., $\lambda_{\text{collapse}}=\lambda_{\text{iso}}=0$, keeping all other hyperparameters fixed (Table~\ref{tab:hyperparams_summary}).
 We first compare \emph{full} vs.\ \emph{noreg} on MD17 aspirin (Table~\ref{tab:loss_ablation_aspirin}), then evaluate \emph{noreg} on MD17 malonaldehyde, benzene, and ethanol, and MD22 dha and at-at (Table~\ref{tab:loss_ablation_expand}).
-All entries are mean $\pm$ sample std over seeds $\{42, 1337, 2026\}$ at a 29-step horizon (the full-loss aspirin row matches Table~\ref{tab:multiseed}; auxiliary-loss ablated when $\lambda_{\text{collapse}}=\lambda_{\text{iso}}=0$). Option-B $R_{\text{edge}}$ in these tables is sourced and kept.
+All entries are mean $\pm$ sample std over seeds $\{42, 1337, 2026\}$ at a 29-step horizon (the full-loss aspirin row matches Table~\ref{tab:multiseed}; auxiliary-loss ablated when $\lambda_{\text{collapse}}=\lambda_{\text{iso}}=0$).
 This ablation does not include $N$-body systems.
 
 \paragraph{Aspirin (full vs.\ noreg).}
@@ -999,7 +999,7 @@ We clarify the exact definitions and mathematical distinctions between the Laten
 Computes the ratio of mean squared latent representation norms at rollout step $T$ relative to step $0$: $R_{\text{norm}} = \mathbb{E}[\|\mathbf{h}_T\|_2^2] / \mathbb{E}[\|\mathbf{h}_0\|_2^2]$. For \GKE{}, $R_{\text{norm}} = 1$ in feature space is architectural: $\K = \exp(\Ask) \in SO(n)$ with implicit $\Delta t=1$ (Theorem~\ref{thm:so_n}.iii). $\mathcal{L}_{\text{collapse}}$ does not train $R_{\text{norm}}$.
 
 \paragraph{Decoded Coordinate Edge Ratio ($R_{\text{edge}}$).}
-Evaluates physical geometry after non-linear decoding into 3D spatial coordinates, relative to the trajectory's own decoded $t=0$ frame: $R_{\text{edge}} = \frac{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(T) - \hat{\mathbf{x}}_j(T)\|}{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(0) - \hat{\mathbf{x}}_j(0)\|}$. Because the spatial decoder $\text{Decoder}: \mathbf{h} \mapsto \hat{\mathbf{x}}$ is a non-linear neural network, $R_{\text{edge}}$ is not constrained to be identically $1.0000$. $\mathcal{L}_{\text{iso}}$ additionally pushes bonded distances during training. Sourced $R_{\text{edge}}$ appears in Appendix~\ref{app:loss_ablation} (Option B). Springs \GGRU{} coord $R_{\text{edge}}$ is omitted from Tables~\ref{tab:multiseed} and \ref{tab:app_results_md22} (no Phase-9 Option-B dump).
+Evaluates physical geometry after non-linear decoding into 3D spatial coordinates, relative to the trajectory's own decoded $t=0$ frame: $R_{\text{edge}} = \frac{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(T) - \hat{\mathbf{x}}_j(T)\|}{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(0) - \hat{\mathbf{x}}_j(0)\|}$. Because the spatial decoder $\text{Decoder}: \mathbf{h} \mapsto \hat{\mathbf{x}}$ is a non-linear neural network, $R_{\text{edge}}$ is not constrained to be identically $1.0000$. $\mathcal{L}_{\text{iso}}$ additionally pushes bonded distances during training. Springs \GGRU{} $R_{\text{edge}}$ is omitted from Tables~\ref{tab:multiseed} and \ref{tab:app_results_md22}.
 
 The formal pseudocode procedure for computing the Decoded Coordinate Edge Ratio ($R_{\text{edge}}$) across an autoregressive rollout horizon is detailed in Algorithm~\ref{alg:coord_edge_ratio}.
 

@@ -1,6 +1,6 @@
 # Beyond MSE: Orthogonal Latent Dynamics for Long-Horizon Graph Simulation
 
-Official implementation of **"Beyond MSE: Orthogonal Latent Dynamics for Long-Horizon Graph Simulation"**. The reported model is Kronecker **GraphAwareKoopmanNet** (`K_glob`). Legacy `GraphKoopmanNet` (node-wise 64×64) is **not CLI-wired and not the paper**.
+Official implementation of **"Beyond MSE: Orthogonal Latent Dynamics for Long-Horizon Graph Simulation"**. The reported model is Kronecker **GraphAwareKoopmanNet** (`K_glob`). A legacy node-wise 64×64 `GraphKoopmanNet` exists in the repository but is **not the reported model**.
 
 ---
 
@@ -21,7 +21,7 @@ Bond / angle / torsion in the tables below are **drift from decoded t=0**, not v
 
 ---
 
-## Training objective (matches `compute_loss`)
+## Training objective
 
 Default weights are **fixed** at **10 / 1 / 2 / 5** (reconstruction / dynamics / collapse / iso). There is no annealed λ.
 
