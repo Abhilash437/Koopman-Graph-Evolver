@@ -297,11 +297,11 @@ Empirically, tabulated 14-system comparisons favor \GKE{} on $t=0$ bond/angle/to
 \subsection{Statistical Significance}
 \label{sec:stats}
 
-To check that the $t=0$-drift gaps are not a one-off row, we use one-sided Wilcoxon signed-rank tests on paired system metrics between \GKE{} and \GGRU{} on the 14-system \textbf{P1} single-seed appendix/sweep grid (Tables~\ref{tab:app_results_md17}--\ref{tab:app_results_md22}; \texttt{sweep\_20260716\_161829}), not P3 seed-means. This is not a proof of physical superiority.
+To check that the $t=0$-drift gaps are not a one-off row, we use one-sided Wilcoxon signed-rank tests on paired system metrics between \GKE{} and \GGRU{} on the 14-system \textbf{P1} single-seed appendix/sweep protocol (Tables~\ref{tab:app_results_md17}--\ref{tab:app_results_md22}), not P3 seed-means. This is not a proof of physical superiority.
 
 \begin{table}[htbp]
   \centering
-  \caption{One-sided Wilcoxon signed-rank test results comparing \GKE{} vs.\ \GGRU{} across 14 physical systems on the \textbf{P1} single-seed appendix/sweep grid (\texttt{sweep\_20260716\_161829}), not P3 seed-means. Bond/angle/torsion are drift from decoded $t=0$, not vs.\ ground-truth topology.}
+  \caption{One-sided Wilcoxon signed-rank test results comparing \GKE{} vs.\ \GGRU{} across 14 physical systems on the \textbf{P1} single-seed appendix/sweep protocol (Tables~\ref{tab:app_results_md17}--\ref{tab:app_results_md22}), not P3 seed-means. Bond/angle/torsion are drift from decoded $t=0$, not vs.\ ground-truth topology.}
   \label{tab:wilcoxon}
   \begin{tabular}{lccc}
     \toprule
@@ -327,7 +327,7 @@ Table~\ref{tab:multiseed} summarizes representative systems: aspirin, malonaldeh
 
 \paragraph{Seed protocols.}
 \textbf{P3}: train+eval mean$\pm$std over seeds $\{42, 1337, 2026\}$ (Table~\ref{tab:multiseed}).
-\textbf{P1}: single-seed benchmark sweep from \texttt{sweep\_20260716\_161829} (Tables~\ref{tab:app_results_md17}--\ref{tab:app_results_md22}).
+\textbf{P1}: single-seed appendix/sweep protocol (Tables~\ref{tab:app_results_md17}--\ref{tab:app_results_md22}).
 \textbf{P1-s42}: seed $42$ only (Appendix~\ref{app:gru_stabilizers}).
 \textbf{P3-noreg}: seeds $\{42,1337,2026\}$ with $\lambda_{\text{collapse}}=\lambda_{\text{iso}}=0$ (Appendix~\ref{app:loss_ablation}).
 Never cite a P1 cell as a multi-seed mean.
@@ -335,7 +335,7 @@ Never cite a P1 cell as a multi-seed mean.
 
 \begin{table}[htbp]
 \centering
-\caption{3-seed aggregate (P3), seeds $\{42, 1337, 2026\}$. Springs MSE is mean$\pm$sample stdev from \texttt{multiseed\_results\_nbody.txt} (seeds 42, 1337) and \texttt{multiseed\_results\_nbody\_2026.txt} (seed 2026). Other $\pm$ in this table are as previously reported (population std). Bond/angle/torsion columns are mean absolute drift from the trajectory's own decoded $t=0$ frame, not vs.\ ground-truth topology. $R_{\text{edge}}$ is likewise relative to decoded $t=0$ except springs \GGRU{}, which is omitted (no Phase-9 Option-B dump).}
+\caption{3-seed aggregate (P3), seeds $\{42, 1337, 2026\}$. Springs MSE is P3 mean$\pm$sample stdev over seeds $\{42, 1337, 2026\}$. Other $\pm$ in this table are as previously reported (population std). Bond/angle/torsion columns are mean absolute drift from the trajectory's own decoded $t=0$ frame, not vs.\ ground-truth topology. $R_{\text{edge}}$ is likewise relative to decoded $t=0$ except springs \GGRU{}, which is omitted (no Phase-9 Option-B dump).}
 \label{tab:multiseed}
 \resizebox{\textwidth}{!}{
 \begin{tabular}{llrrrrr}
@@ -396,7 +396,7 @@ AT-AT (MD22) & $9.18\times 10^{-2}$ & $2.55\times 10^{-4}$ \\
 \subsection{Case Studies: Dissecting the MSE Paradox}
 \label{sec:mse_paradox}
 
-\paragraph{$N$-body springs.} On springs (Table~\ref{tab:multiseed}, P3),\footnote{Springs MSE: mean $\pm$ sample stdev over seeds $\{42,1337,2026\}$ from \texttt{multiseed\_results\_nbody.txt} (seeds 42, 1337) and \texttt{multiseed\_results\_nbody\_2026.txt} (seed 2026). G-GRU latent-norm $2.16\times$ is the P3 mean of Phase-9 ratios $2.1234$/$2.1141$/$2.2342$.} \GGRU{} has lower rollout MSE ($0.0455 \pm 0.0185$; individual runs reaching $2.63\times10^{-2}$) than \GKE{} ($0.1768 \pm 0.0030$), with P3 latent-norm ratio $2.16\times$. Structural quotes are the same P3 cells: bond $0.6167\pm 0.0131$\,\AA, angle $46.5105\pm 0.8687^\circ$, torsion $80.2149\pm 0.9485^\circ$ (decoded $t=0$ drift). Springs \GGRU{} coord $R_{\text{edge}}$ is omitted (no Phase-9 Option-B dump). That is the MSE-versus-topology diagnostic: MSE can reward near-uniform expansion.
+\paragraph{$N$-body springs.} On springs (Table~\ref{tab:multiseed}, P3),\footnote{Springs MSE: P3 mean $\pm$ sample stdev over seeds $\{42,1337,2026\}$. G-GRU latent-norm $2.16\times$ is the P3 mean of per-seed ratios $2.1234$/$2.1141$/$2.2342$.} \GGRU{} has lower rollout MSE ($0.0455 \pm 0.0185$; individual runs reaching $2.63\times10^{-2}$) than \GKE{} ($0.1768 \pm 0.0030$), with P3 latent-norm ratio $2.16\times$. Structural quotes are the same P3 cells: bond $0.6167\pm 0.0131$\,\AA, angle $46.5105\pm 0.8687^\circ$, torsion $80.2149\pm 0.9485^\circ$ (decoded $t=0$ drift). Springs \GGRU{} coord $R_{\text{edge}}$ is omitted (no Phase-9 Option-B dump). That is the MSE-versus-topology diagnostic: MSE can reward near-uniform expansion.
 
 \paragraph{MD22 AT-AT.} \GGRU{} $R_{\text{norm}}$ contracts ($0.63\times$); unconstrained \EGNN{} expands ($5.83\times$). \GKE{}/\EGKN{} keep latent $R_{\text{norm}}=1$ by the $SO(n)$ parameterization. Decoded $t=0$ topology scores remain empirical (Limitation~1).
 
@@ -435,7 +435,7 @@ This indicates that SEGNO's structural stabilization keeps rollouts finite; E-GK
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.42\textwidth]{figures/dynamics_tradeoff_dha_egkn_vs_segno.png}
-    \caption{E-GKN vs.\ SEGNO on MD22 DHA, 29 rollout steps. Top: rollout MSE. Rows 2--4: pairwise coordinate-distance ratio, node-embedding-distance ratio, and \emph{latent-norm} ratio (not physical energy; not a tabulated 14-system metric). Ratios are relative to decoded/latent $t=0$. SEGNO has slightly higher coordinate-distance retention here; E-GKN has lower MSE and $\rho(K)=1$ on invariant features by construction.}
+    \caption{E-GKN vs.\ SEGNO on MD22 DHA, 29 rollout steps. Top: rollout MSE. Lower panels: pairwise coordinate-distance ratio and node-embedding-distance ratio, relative to decoded/latent $t=0$ (not a tabulated 14-system metric). SEGNO has slightly higher coordinate-distance retention here; E-GKN has lower MSE and $\rho(K)=1$ on invariant features by construction.}
     \label{fig:segno_rollout}
 \end{figure}
 
@@ -628,12 +628,6 @@ The standard evaluation metric $\rho(\K_{\text{global}})$ reports the spectral r
 \section{Full Per-System Results}
 \label{app:full_results}
 
-% NEED_LOG closed 2026-09-16 (NEED-LOG-RESOLUTION):
-%   App D mean±samp std + win counts: verified; no numeric corrections.
-%   Springs G-GRU coord R_edge (was 1.6290 / 1.63×): DROPPED (absent from Phase-9).
-%   Wilcoxon: P1 sweep grid; bond statistic 1.5 → 3.0.
-%   App D Option-B R_edge KEPT.
-
 We report parameter counts and rollout metrics for Flat Koopman, Graph Koopman, and Graph GRU across 14 systems. Table~\ref{tab:app_params} is parameter scaling. Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22} are \textbf{P1} single-seed sweep cells (not P3 means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT.
 
 \begin{table}[h]
@@ -664,7 +658,7 @@ n-body (springs) & 467,151 & 93,264 & 114,128 \\
 
 \begin{table}[htbp]
 \centering
-\caption{Single-seed sweep (P1) from \texttt{sweep\_20260716\_161829}: MD17 systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Colliding cells with Table~\ref{tab:multiseed} (P3) are expected. MSE column is Phase-9 sweep rollout MSE (not P3 means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. $R_{\text{edge}}$ is relative to decoded $t=0$.}
+\caption{P1 single-seed sweep protocol: MD17 systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Colliding cells with Table~\ref{tab:multiseed} (P3) are expected. MSE column is P1 sweep rollout MSE (not P3 means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. $R_{\text{edge}}$ is relative to decoded $t=0$.}
 \label{tab:app_results_md17}
 \resizebox{\textwidth}{!}{
 \begin{tabular}{llrrrrrr}
@@ -708,7 +702,7 @@ n-body (springs) & 467,151 & 93,264 & 114,128 \\
 
 \begin{table}[htbp]
 \centering
-\caption{Single-seed sweep (P1) from \texttt{sweep\_20260716\_161829}: MD22 and N-body systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Colliding cells with Table~\ref{tab:multiseed} (P3) are expected. MSE column is Phase-9 sweep rollout MSE (not P3 means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. Springs \GGRU{} coord $R_{\text{edge}}$ is omitted (no Phase-9 Option-B dump); latent $R_{\text{norm}}=1.9794$ is the verified P1 cell.}
+\caption{P1 single-seed sweep protocol: MD22 and N-body systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Colliding cells with Table~\ref{tab:multiseed} (P3) are expected. MSE column is P1 sweep rollout MSE (not P3 means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. Springs \GGRU{} coord $R_{\text{edge}}$ is omitted (no Phase-9 Option-B dump); latent $R_{\text{norm}}=1.9794$ is the verified P1 cell.}
 \label{tab:app_results_md22}
 \resizebox{\textwidth}{!}{
 \begin{tabular}{llrrrrrr}
