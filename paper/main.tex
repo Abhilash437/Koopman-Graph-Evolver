@@ -82,9 +82,9 @@ Graph neural networks for physical simulation often keep one-step error low whil
 
 Graph neural networks (GNNs) have emerged as a principal tool for simulating complex physical systems, including molecular dynamics and particle interactions, by mapping snapshot graphs $\mathcal{G}_t$ to latent representations, executing a temporal transition, and decoding subsequent states~\citep{bronstein2021geometric}. While these models demonstrate strong short-horizon performance, their behavior over extended autoregressive rollouts presents critical failure modes. Specifically, how unconstrained temporal transitions affect latent manifold stability over long prediction steps remains insufficiently characterized.
 
-During multi-step prediction, standard recurrent transitions (e.g., GRUs) and unconstrained message-passing updates systematically alter latent representation magnitudes. Without structural constraints on the transition operator, latent vector norms expand or contract, causing compounding \emph{latent drift}. Physically, this degradation manifests as structural distortion: on springs, Graph-GRU decoded $t=0$ bond drift is $0.6167\pm 0.0131$\,\AA\ and angle drift $46.5105\pm 0.8687^\circ$ (Table~\ref{tab:multiseed}, P3), and unconstrained latent-norm ratios diverge up to $109.5\times$ on \texttt{ac-ala3-nhme} (Section~\ref{sec:experiments}).
+During multi-step prediction, standard recurrent transitions (e.g., GRUs) and unconstrained message-passing updates systematically alter latent representation magnitudes. Without structural constraints on the transition operator, latent vector norms expand or contract, causing compounding \emph{latent drift}. In decoded coordinates, this degradation shows up as structural distortion: on springs, Graph-GRU decoded $t=0$ bond drift is $0.6167\pm 0.0131$\,\AA\ and angle drift $46.5105\pm 0.8687^\circ$ (Table~\ref{tab:multiseed}, P3), and unconstrained latent-norm ratios diverge up to $109.5\times$ on \texttt{ac-ala3-nhme} (Section~\ref{sec:experiments}).
 
-Crucially, standard evaluation metrics often fail to reflect this physical degradation. We observe an \emph{MSE paradox}: on the $N$-body \texttt{springs} benchmark, a Graph GRU obtains a lower P3 rollout MSE ($0.0455 \pm 0.0185$, with individual runs reaching $2.63\times10^{-2}$) than our proposed model ($0.1768 \pm 0.0030$), even as its P3 latent-norm ratio reaches $2.16\times$ and $t=0$ bond/angle/torsion drift show large decoded expansion (Table~\ref{tab:multiseed}). Mean squared error can reward models that collapse toward spatial centroids or expand uniformly, neither of which preserves inter-atomic topology.
+Crucially, standard evaluation metrics often fail to reflect this decoded structural degradation. We observe an \emph{MSE paradox}: on the $N$-body \texttt{springs} benchmark, a Graph GRU obtains a lower P3 rollout MSE ($0.0455 \pm 0.0185$, with individual runs reaching $2.63\times10^{-2}$) than our proposed model ($0.1768 \pm 0.0030$), even as its P3 latent-norm ratio reaches $2.16\times$ and $t=0$ bond/angle/torsion drift show large decoded expansion (Table~\ref{tab:multiseed}). Mean squared error can reward models that collapse toward spatial centroids or expand uniformly, neither of which preserves inter-atomic topology.
 
 These observations suggest a clear hypothesis: \emph{constraining the latent transition to preserve vector norms and volume will prevent unbounded latent-norm drift;} decoded topology may then drift less, which we treat as empirical.
 
@@ -184,7 +184,7 @@ Let $\mathbf{H}_t=\phi_\theta(\mathcal{G}_t)$ be the encoder embedding of the \e
 \end{itemize}
 $R_{\mathrm{norm}}=1$ for \GKE{} is an architectural $SO(n)$ property of $\K_{\text{global}}=\exp(\mathbf{A}_{\mathrm{glob}})$ (Theorem~\ref{thm:so_n}); $\mathcal{L}_{\text{collapse}}$ does not enforce it. To isolate $\mathcal{L}_{\text{collapse}}$ and $\mathcal{L}_{\text{iso}}$, we additionally report a controlled ablation with $\lambda_{\text{collapse}}=\lambda_{\text{iso}}=0$ in Appendix~\ref{app:loss_ablation}.
 
-\subsection{Latent Geometry Preservation}
+\subsection{Latent $SO(n)$ Constraint}
 \label{sec:theory}
 
 An unconstrained transition operator $\K$ can possess eigenvalues with $|\lambda| \neq 1$. Under multi-step autoregressive rollout $\bar{\z}_{t+k} = \K^k \bar{\z}_t$, components with $|\lambda| > 1$ grow exponentially, while components with $|\lambda| < 1$ shrink to zero. Both behaviors distort the latent manifold and result in structural drift when mapped through the decoder.
@@ -281,7 +281,7 @@ In addition to standard rollout MSE at step $k=29$, we compute structural topolo
   \item \textbf{Angle Drift ($^\circ$):} Mean absolute change in 3-body bond angles relative to decoded $t=0$.
   \item \textbf{Torsion Drift ($^\circ$):} Mean absolute change in 4-body dihedral angles relative to decoded $t=0$.
   \item \textbf{Latent Norm Ratio ($R_{\text{norm}}$):} The ratio of mean latent representation norms at step $T$ versus $t=0$, $R_{\text{norm}} = \frac{\mathbb{E}[\| \mathbf{h}_{t=T} \|_2^2]}{\mathbb{E}[\| \mathbf{h}_{t=0} \|_2^2]}$. For \GKE{}, $R_{\text{norm}} = 1$ in latent feature space is architectural $SO(n)$ (Theorem~\ref{thm:so_n}.iii), not a trained energy.
-  \item \textbf{Physical Coordinate Edge Ratio ($R_{\text{edge}}$):} The ratio of total physical inter-atomic bond distances in 3D coordinate space between step $T$ and decoded step $0$, $R_{\text{edge}} = \frac{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(T) - \hat{\mathbf{x}}_j(T)\|}{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(0) - \hat{\mathbf{x}}_j(0)\|}$. Because the coordinate decoder is a non-linear mapping, $R_{\text{edge}}$ is not mathematically mandated to be identically $1.0000$. $\mathcal{L}_{\text{iso}}$ additionally pushes bonded distances during training. Sourced $R_{\text{edge}}$ values are those with Option-B dumps (Appendix~\ref{app:loss_ablation}). Springs \GGRU{} coord $R_{\text{edge}}$ is omitted (no Phase-9 Option-B dump).
+  \item \textbf{Decoded Coordinate Edge Ratio ($R_{\text{edge}}$):} The ratio of total physical inter-atomic bond distances in 3D coordinate space between step $T$ and decoded step $0$, $R_{\text{edge}} = \frac{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(T) - \hat{\mathbf{x}}_j(T)\|}{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(0) - \hat{\mathbf{x}}_j(0)\|}$. Because the coordinate decoder is a non-linear mapping, $R_{\text{edge}}$ is not mathematically mandated to be identically $1.0000$. $\mathcal{L}_{\text{iso}}$ additionally pushes bonded distances during training. Sourced $R_{\text{edge}}$ values are those with Option-B dumps (Appendix~\ref{app:loss_ablation}). Springs \GGRU{} coord $R_{\text{edge}}$ is omitted (no Phase-9 Option-B dump).
 \end{itemize}
 
 \paragraph{Training Protocol.}
@@ -999,18 +999,18 @@ Reported topology scores remain decoded-$t=0$ bond/angle/torsion, $R_{\text{norm
 \section{Latent Norm Ratio and Coordinate Edge Ratio Computation}
 \label{app:norm_ratio}
 
-We clarify the exact definitions and mathematical distinctions between the Latent Norm Ratio ($R_{\text{norm}}$) and the Physical Coordinate Edge Ratio ($R_{\text{edge}}$):
+We clarify the exact definitions and mathematical distinctions between the Latent Norm Ratio ($R_{\text{norm}}$) and the Decoded Coordinate Edge Ratio ($R_{\text{edge}}$):
 
 \paragraph{Latent Norm Ratio ($R_{\text{norm}}$).}
 Computes the ratio of mean squared latent representation norms at rollout step $T$ relative to step $0$: $R_{\text{norm}} = \mathbb{E}[\|\mathbf{h}_T\|_2^2] / \mathbb{E}[\|\mathbf{h}_0\|_2^2]$. For \GKE{}, $R_{\text{norm}} = 1$ in feature space is architectural: $\K = \exp(\Ask) \in SO(n)$ with implicit $\Delta t=1$ (Theorem~\ref{thm:so_n}.iii). $\mathcal{L}_{\text{collapse}}$ does not train $R_{\text{norm}}$.
 
-\paragraph{Physical Coordinate Edge Ratio ($R_{\text{edge}}$).}
+\paragraph{Decoded Coordinate Edge Ratio ($R_{\text{edge}}$).}
 Evaluates physical geometry after non-linear decoding into 3D spatial coordinates, relative to the trajectory's own decoded $t=0$ frame: $R_{\text{edge}} = \frac{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(T) - \hat{\mathbf{x}}_j(T)\|}{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(0) - \hat{\mathbf{x}}_j(0)\|}$. Because the spatial decoder $\text{Decoder}: \mathbf{h} \mapsto \hat{\mathbf{x}}$ is a non-linear neural network, $R_{\text{edge}}$ is not constrained to be identically $1.0000$. $\mathcal{L}_{\text{iso}}$ additionally pushes bonded distances during training. Sourced $R_{\text{edge}}$ appears in Appendix~\ref{app:loss_ablation} (Option B). Springs \GGRU{} coord $R_{\text{edge}}$ is omitted from Tables~\ref{tab:multiseed} and \ref{tab:app_results_md22} (no Phase-9 Option-B dump).
 
-The formal pseudocode procedure for computing the Physical Coordinate Edge Ratio ($R_{\text{edge}}$) across an autoregressive rollout horizon is detailed in Algorithm~\ref{alg:coord_edge_ratio}.
+The formal pseudocode procedure for computing the Decoded Coordinate Edge Ratio ($R_{\text{edge}}$) across an autoregressive rollout horizon is detailed in Algorithm~\ref{alg:coord_edge_ratio}.
 
 \begin{algorithm}[H]
-\caption{Physical Coordinate Edge Length Ratio Computation ($R_{\text{edge}}$)}
+\caption{Decoded Coordinate Edge Length Ratio Computation ($R_{\text{edge}}$)}
 \label{alg:coord_edge_ratio}
 \begin{algorithmic}[1]
 \Require Predicted 3D spatial node coordinates $\hat{\mathbf{X}} \in \mathbb{R}^{B \times (T+1) \times N \times 3}$, graph edge index set $\mathcal{E} = \{(u_m, v_m)\}_{m=1}^E$, numerical stability constant $\varepsilon = 10^{-8}$.
