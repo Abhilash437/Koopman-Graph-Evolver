@@ -40,20 +40,20 @@ Default weights are **fixed** at **10 / 1 / 2 / 5** (reconstruction / dynamics /
 
 Bond / angle / torsion = **decoded t=0 drift**, not vs GT. Baselines are **not** an identical-objective bake-off (G-GRU uses 4-step dyn unroll; Flat-K drops iso). The table below is the 3-seed aggregate; appendix tables in the paper are a single-seed sweep — do not cite single-seed appendix cells as multi-seed means. Springs MSE is mean±sample stdev over seeds {42, 1337, 2026}.
 
-| System | Model | Rollout MSE (29-step) | Bond Drift (Å) | Angle Drift (°) | Torsion Drift (°) | Decoded Coord Edge Ratio ($R_{\text{edge}}$) |
-|:---|:---|:---:|:---:|:---:|:---:|:---:|
-| **aspirin** | Flat Koopman | 0.0715 ± 0.008 | 0.0816 ± 0.004 | 4.55 ± 0.45 | 5.38 ± 0.32 | 0.9707 |
-| | **Graph Koopman** | 0.2411 ± 0.003 | **0.0045 ± 0.004** | **0.09 ± 0.02** | **0.15 ± 0.06** | **0.9974** |
-| | Graph GRU | 0.1388 ± 0.031 | 0.0689 ± 0.012 | 5.49 ± 1.13 | 6.42 ± 0.62 | 0.9584 |
-| **malonaldehyde** | Flat Koopman | 0.4002 ± 0.003 | 0.1699 ± 0.022 | 10.51 ± 1.29 | 16.73 ± 1.28 | 0.9367 |
-| | **Graph Koopman** | 0.9151 ± 0.048 | **0.0905 ± 0.030** | **0.46 ± 0.34** | **0.83 ± 0.40** | **0.9416** |
-| | Graph GRU | 0.3532 ± 0.005 | 0.0981 ± 0.005 | 3.72 ± 0.66 | 4.19 ± 1.36 | 0.9262 |
-| **at-at** | Flat Koopman | 3.6341 ± 1.041 | 0.4499 ± 0.146 | 37.14 ± 9.74 | 48.21 ± 11.20 | 0.9972 |
-| | **Graph Koopman** | 6.2917 ± 0.514 | **0.0240 ± 0.010** | **0.63 ± 0.26** | **1.15 ± 0.48** | **0.9868** |
-| | Graph GRU | 2.6390 ± 0.158 | 0.2514 ± 0.038 | 17.98 ± 1.96 | 26.37 ± 3.13 | 0.8675 |
-| **springs** | Flat Koopman | 0.1762 ± 0.0011 | 0.1075 ± 0.026 | 14.55 ± 2.87 | 29.38 ± 5.56 | 0.9827 |
-| | **Graph Koopman** | 0.1768 ± 0.003 | **0.0248 ± 0.009** | **2.59 ± 1.01** | **6.05 ± 1.79** | **1.0112** |
-| | Graph GRU | 0.0455 ± 0.0185 | 0.6167 ± 0.013 | 46.51 ± 0.87 | 80.21 ± 0.95 | — |
+| System | Model | Rollout MSE (29-step) | Bond Drift (Å) | Angle Drift (°) | Torsion Drift (°) |
+|:---|:---|:---:|:---:|:---:|:---:|
+| **aspirin** | Flat Koopman | 0.0715 ± 0.008 | 0.0816 ± 0.004 | 4.55 ± 0.45 | 5.38 ± 0.32 |
+| | **Graph Koopman** | 0.2411 ± 0.003 | **0.0045 ± 0.004** | **0.09 ± 0.02** | **0.15 ± 0.06** |
+| | Graph GRU | 0.1388 ± 0.031 | 0.0689 ± 0.012 | 5.49 ± 1.13 | 6.42 ± 0.62 |
+| **malonaldehyde** | Flat Koopman | 0.4002 ± 0.003 | 0.1699 ± 0.022 | 10.51 ± 1.29 | 16.73 ± 1.28 |
+| | **Graph Koopman** | 0.9151 ± 0.048 | **0.0905 ± 0.030** | **0.46 ± 0.34** | **0.83 ± 0.40** |
+| | Graph GRU | 0.3532 ± 0.005 | 0.0981 ± 0.005 | 3.72 ± 0.66 | 4.19 ± 1.36 |
+| **at-at** | Flat Koopman | 3.6341 ± 1.041 | 0.4499 ± 0.146 | 37.14 ± 9.74 | 48.21 ± 11.20 |
+| | **Graph Koopman** | 6.2917 ± 0.514 | **0.0240 ± 0.010** | **0.63 ± 0.26** | **1.15 ± 0.48** |
+| | Graph GRU | 2.6390 ± 0.158 | 0.2514 ± 0.038 | 17.98 ± 1.96 | 26.37 ± 3.13 |
+| **springs** | Flat Koopman | 0.1762 ± 0.0011 | 0.1075 ± 0.026 | 14.55 ± 2.87 | 29.38 ± 5.56 |
+| | **Graph Koopman** | 0.1768 ± 0.003 | **0.0248 ± 0.009** | **2.59 ± 1.01** | **6.05 ± 1.79** |
+| | Graph GRU | 0.0455 ± 0.0185 | 0.6167 ± 0.013 | 46.51 ± 0.87 | 80.21 ± 0.95 |
 
 ### 2. Statistical Significance Across All 14 Systems
 

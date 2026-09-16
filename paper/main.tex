@@ -146,7 +146,7 @@ Orthogonal and unitary recurrent neural networks~\citep{arjovsky2016unitary,helf
 \subsection{Problem Setup}
 \label{sec:setup}
 
-Let $\mathcal{G}_t = (\mathcal{V}, \mathcal{E}, \x_t)$ be a graph with node 3D coordinates $\x_t \in \R^{N \times 3}$ and fixed topology $\mathcal{E}$. Given an initial context window of snapshot graphs $\{\mathcal{G}_{t-\tau},\dots,\mathcal{G}_t\}$, the objective is to generate autoregressive predictions $\mathcal{G}_{t+k}$ for long horizons $k \gg 1$ while maintaining structural invariants: bond lengths, bond angles, and dihedral torsions.
+Let $\mathcal{G}_t = (\mathcal{V}, \mathcal{E}, \x_t)$ be a graph with node 3D coordinates $\x_t \in \R^{N \times 3}$ and fixed topology $\mathcal{E}$. Given an initial context window of snapshot graphs $\{\mathcal{G}_{t-\tau},\dots,\mathcal{G}_t\}$, the objective is to generate autoregressive predictions $\mathcal{G}_{t+k}$ for long horizons $k \gg 1$ with the aim of limiting decoded drift in bond lengths, bond angles, and dihedral torsions.
 
 \subsection{Koopman Graph Evolver Architecture}
 
@@ -281,7 +281,7 @@ In addition to standard rollout MSE at step $k=29$, we compute structural topolo
   \item \textbf{Angle Drift ($^\circ$):} Mean absolute change in 3-body bond angles relative to decoded $t=0$.
   \item \textbf{Torsion Drift ($^\circ$):} Mean absolute change in 4-body dihedral angles relative to decoded $t=0$.
   \item \textbf{Latent Norm Ratio ($R_{\text{norm}}$):} The ratio of mean latent representation norms at step $T$ versus $t=0$, $R_{\text{norm}} = \frac{\mathbb{E}[\| \mathbf{h}_{t=T} \|_2^2]}{\mathbb{E}[\| \mathbf{h}_{t=0} \|_2^2]}$. For \GKE{}, $R_{\text{norm}} = 1$ in latent feature space is architectural $SO(n)$ (Theorem~\ref{thm:so_n}.iii), not a trained energy.
-  \item \textbf{Decoded Coordinate Edge Ratio ($R_{\text{edge}}$):} The ratio of total physical inter-atomic bond distances in 3D coordinate space between step $T$ and decoded step $0$, $R_{\text{edge}} = \frac{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(T) - \hat{\mathbf{x}}_j(T)\|}{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(0) - \hat{\mathbf{x}}_j(0)\|}$. Because the coordinate decoder is a non-linear mapping, $R_{\text{edge}}$ is not mathematically mandated to be identically $1.0000$. $\mathcal{L}_{\text{iso}}$ additionally pushes bonded distances during training. Springs \GGRU{} $R_{\text{edge}}$ is omitted (not available for that baseline).
+  \item \textbf{Decoded Coordinate Edge Ratio ($R_{\text{edge}}$):} The ratio of total decoded inter-atomic bond distances in 3D coordinate space between step $T$ and decoded step $0$, $R_{\text{edge}} = \frac{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(T) - \hat{\mathbf{x}}_j(T)\|}{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(0) - \hat{\mathbf{x}}_j(0)\|}$. Because the coordinate decoder is a non-linear mapping, $R_{\text{edge}}$ is not mathematically mandated to be identically $1.0000$. $\mathcal{L}_{\text{iso}}$ additionally pushes bonded distances during training. This ablation decoded-edge metric is reported in Appendix~\ref{app:loss_ablation}, not in Tables~\ref{tab:multiseed}, \ref{tab:app_results_md17}, or \ref{tab:app_results_md22}.
 \end{itemize}
 
 \paragraph{Training Protocol.}
@@ -331,36 +331,36 @@ Table~\ref{tab:multiseed} summarizes representative systems: aspirin, malonaldeh
 \textbf{Seed-42 stabilizer appendix:} seed $42$ only (Appendix~\ref{app:gru_stabilizers}).
 \textbf{Auxiliary-loss ablated:} seeds $\{42,1337,2026\}$ with $\lambda_{\text{collapse}}=\lambda_{\text{iso}}=0$ (Appendix~\ref{app:loss_ablation}).
 Never cite a single-seed appendix cell as a multi-seed mean.
-\GKE{} $R_{\text{norm}}=1$ is architectural; $R_{\text{edge}}$ and bond/angle/torsion remain decoded $t=0$ scores (and iso-trained for bonds).
+\GKE{} $R_{\text{norm}}=1$ is architectural; bond/angle/torsion remain decoded $t=0$ scores (and iso-trained for bonds). Ablation tables additionally report decoded $R_{\text{edge}}$ (Appendix~\ref{app:loss_ablation}).
 
 \begin{table}[htbp]
 \centering
-\caption{3-seed aggregate, seeds $\{42, 1337, 2026\}$. Springs MSE is mean$\pm$sample standard deviation over those seeds; other $\pm$ values are population standard deviation. Bond/angle/torsion columns are mean absolute drift from the trajectory's own decoded $t=0$ frame, not vs.\ ground-truth topology. $R_{\text{edge}}$ is likewise relative to decoded $t=0$ except springs \GGRU{}, which is omitted.}
+\caption{3-seed aggregate, seeds $\{42, 1337, 2026\}$. Springs MSE is mean$\pm$sample standard deviation over those seeds; other $\pm$ values are population standard deviation. Bond/angle/torsion columns are mean absolute drift from the trajectory's own decoded $t=0$ frame, not vs.\ ground-truth topology.}
 \label{tab:multiseed}
 \resizebox{\textwidth}{!}{
-\begin{tabular}{llrrrrr}
+\begin{tabular}{llrrrr}
 \toprule
-\textbf{System} & \textbf{Model} & \textbf{MSE} & \textbf{Bond (\AA)} & \textbf{Angle ($^\circ$)} & \textbf{Torsion ($^\circ$)} & \textbf{Coord $R_{\text{edge}}$} \\
+\textbf{System} & \textbf{Model} & \textbf{MSE} & \textbf{Bond (\AA)} & \textbf{Angle ($^\circ$)} & \textbf{Torsion ($^\circ$)} \\
 \midrule
 \multirow{3}{*}{aspirin}
- & Flat Koopman & 0.0715 $\pm$ 0.0081 & 0.0816 $\pm$ 0.0038 & 4.5489 $\pm$ 0.4463 & 5.3816 $\pm$ 0.3172 & 0.9707 \\
- & Graph Koopman & 0.2411 $\pm$ 0.0028 & 0.0045 $\pm$ 0.0042 & 0.0908 $\pm$ 0.0195 & 0.1478 $\pm$ 0.0573 & 0.9974 \\
- & Graph GRU & 0.1388 $\pm$ 0.0307 & 0.0689 $\pm$ 0.0115 & 5.4895 $\pm$ 1.1282 & 6.4159 $\pm$ 0.6217 & 0.9584 \\
+ & Flat Koopman & 0.0715 $\pm$ 0.0081 & 0.0816 $\pm$ 0.0038 & 4.5489 $\pm$ 0.4463 & 5.3816 $\pm$ 0.3172 \\
+ & Graph Koopman & 0.2411 $\pm$ 0.0028 & 0.0045 $\pm$ 0.0042 & 0.0908 $\pm$ 0.0195 & 0.1478 $\pm$ 0.0573 \\
+ & Graph GRU & 0.1388 $\pm$ 0.0307 & 0.0689 $\pm$ 0.0115 & 5.4895 $\pm$ 1.1282 & 6.4159 $\pm$ 0.6217 \\
 \midrule
 \multirow{3}{*}{malonaldehyde}
- & Flat Koopman & 0.4002 $\pm$ 0.0027 & 0.1699 $\pm$ 0.0220 & 10.5136 $\pm$ 1.2920 & 16.7259 $\pm$ 1.2779 & 0.9367 \\
- & Graph Koopman & 0.9151 $\pm$ 0.0482 & 0.0905 $\pm$ 0.0303 & 0.4606 $\pm$ 0.3406 & 0.8284 $\pm$ 0.3951 & 0.9416 \\
- & Graph GRU & 0.3532 $\pm$ 0.0049 & 0.0981 $\pm$ 0.0053 & 3.7225 $\pm$ 0.6630 & 4.1948 $\pm$ 1.3642 & 0.9262 \\
+ & Flat Koopman & 0.4002 $\pm$ 0.0027 & 0.1699 $\pm$ 0.0220 & 10.5136 $\pm$ 1.2920 & 16.7259 $\pm$ 1.2779 \\
+ & Graph Koopman & 0.9151 $\pm$ 0.0482 & 0.0905 $\pm$ 0.0303 & 0.4606 $\pm$ 0.3406 & 0.8284 $\pm$ 0.3951 \\
+ & Graph GRU & 0.3532 $\pm$ 0.0049 & 0.0981 $\pm$ 0.0053 & 3.7225 $\pm$ 0.6630 & 4.1948 $\pm$ 1.3642 \\
 \midrule
 \multirow{3}{*}{at-at}
- & Flat Koopman & 3.6341 $\pm$ 1.0408 & 0.4499 $\pm$ 0.1461 & 37.1400 $\pm$ 9.7360 & 48.2050 $\pm$ 11.1981 & 0.9972 \\
- & Graph Koopman & 6.2917 $\pm$ 0.5139 & 0.0240 $\pm$ 0.0097 & 0.6270 $\pm$ 0.2627 & 1.1524 $\pm$ 0.4824 & 0.9868 \\
- & Graph GRU & 2.6390 $\pm$ 0.1575 & 0.2514 $\pm$ 0.0379 & 17.9786 $\pm$ 1.9597 & 26.3741 $\pm$ 3.1289 & 0.8675 \\
+ & Flat Koopman & 3.6341 $\pm$ 1.0408 & 0.4499 $\pm$ 0.1461 & 37.1400 $\pm$ 9.7360 & 48.2050 $\pm$ 11.1981 \\
+ & Graph Koopman & 6.2917 $\pm$ 0.5139 & 0.0240 $\pm$ 0.0097 & 0.6270 $\pm$ 0.2627 & 1.1524 $\pm$ 0.4824 \\
+ & Graph GRU & 2.6390 $\pm$ 0.1575 & 0.2514 $\pm$ 0.0379 & 17.9786 $\pm$ 1.9597 & 26.3741 $\pm$ 3.1289 \\
 \midrule
 \multirow{3}{*}{springs}
- & Flat Koopman & 0.1762 $\pm$ 0.0011 & 0.1075 $\pm$ 0.0255 & 14.5514 $\pm$ 2.8748 & 29.3838 $\pm$ 5.5636 & 0.9827 \\
- & Graph Koopman & 0.1768 $\pm$ 0.0030 & 0.0248 $\pm$ 0.0092 & 2.5892 $\pm$ 1.0129 & 6.0530 $\pm$ 1.7870 & 1.0112 \\
- & Graph GRU & 0.0455 $\pm$ 0.0185 & 0.6167 $\pm$ 0.0131 & 46.5105 $\pm$ 0.8687 & 80.2149 $\pm$ 0.9485 & --- \\
+ & Flat Koopman & 0.1762 $\pm$ 0.0011 & 0.1075 $\pm$ 0.0255 & 14.5514 $\pm$ 2.8748 & 29.3838 $\pm$ 5.5636 \\
+ & Graph Koopman & 0.1768 $\pm$ 0.0030 & 0.0248 $\pm$ 0.0092 & 2.5892 $\pm$ 1.0129 & 6.0530 $\pm$ 1.7870 \\
+ & Graph GRU & 0.0455 $\pm$ 0.0185 & 0.6167 $\pm$ 0.0131 & 46.5105 $\pm$ 0.8687 & 80.2149 $\pm$ 0.9485 \\
 \bottomrule
 \end{tabular}}
 \end{table}
@@ -396,7 +396,7 @@ AT-AT (MD22) & $9.18\times 10^{-2}$ & $2.55\times 10^{-4}$ \\
 \subsection{Case Studies: Dissecting the MSE Paradox}
 \label{sec:mse_paradox}
 
-\paragraph{$N$-body springs.} On springs (Table~\ref{tab:multiseed}), \GGRU{} has lower rollout MSE ($0.0455 \pm 0.0185$; individual runs reaching $2.63\times10^{-2}$) than \GKE{} ($0.1768 \pm 0.0030$), with 3-seed latent-norm ratio $2.16\times$. Structural quotes are the same 3-seed cells: bond $0.6167\pm 0.0131$\,\AA, angle $46.5105\pm 0.8687^\circ$, torsion $80.2149\pm 0.9485^\circ$ (decoded $t=0$ drift). Springs \GGRU{} $R_{\text{edge}}$ is omitted. That is the MSE-versus-topology diagnostic: MSE can reward near-uniform expansion.
+\paragraph{$N$-body springs.} On springs (Table~\ref{tab:multiseed}), \GGRU{} has lower rollout MSE ($0.0455 \pm 0.0185$; individual runs reaching $2.63\times10^{-2}$) than \GKE{} ($0.1768 \pm 0.0030$), with 3-seed latent-norm ratio $2.16\times$. Structural quotes are the same 3-seed cells: bond $0.6167\pm 0.0131$\,\AA, angle $46.5105\pm 0.8687^\circ$, torsion $80.2149\pm 0.9485^\circ$ (decoded $t=0$ drift). That is the MSE-versus-topology diagnostic: MSE can reward near-uniform expansion.
 
 \paragraph{MD22 AT-AT.} \GGRU{} $R_{\text{norm}}$ contracts ($0.63\times$); unconstrained \EGNN{} expands ($5.83\times$). \GKE{}/\EGKN{} keep latent $R_{\text{norm}}=1$ by the $SO(n)$ parameterization. Decoded $t=0$ topology scores remain empirical (Limitation~1).
 
@@ -449,7 +449,7 @@ K = \exp(A_{\text{skew}})
 (with implicit $\Delta t=1$), which guarantees $K \in SO(n)$ on those latent channels, so latent Euclidean norm and latent volume are preserved. Eigenvalues of $K$ lie on the unit circle ($\rho(K)=1$). That is a latent-cell fact, not ``stable physics'' in observation space (Remark~\ref{cor:liouville}).
 
 \paragraph{Representation stability}
-We next evaluate whether repeated rollout preserves the learned latent representation versus physical geometry. Given decoded node coordinates $\hat{\mathbf{X}}(t) \in \R^{N \times 3}$ and latent features $\mathbf{H}(t) \in \R^{N \times d}$, let $D_X(t) \in \R^{N \times N}$ and $D_H(t) \in \R^{N \times N}$ denote the pairwise Euclidean distance matrices where $[D_X(t)]_{ij} = \|\hat{\mathbf{x}}_i(t) - \hat{\mathbf{x}}_j(t)\|_2$ and $[D_H(t)]_{ij} = \|\mathbf{h}_i(t) - \mathbf{h}_j(t)\|_2$. The physical coordinate retention and latent collapse metrics are formally defined as:
+We next evaluate whether repeated rollout preserves the learned latent representation versus decoded pairwise geometry. Given decoded node coordinates $\hat{\mathbf{X}}(t) \in \R^{N \times 3}$ and latent features $\mathbf{H}(t) \in \R^{N \times d}$, let $D_X(t) \in \R^{N \times N}$ and $D_H(t) \in \R^{N \times N}$ denote the pairwise Euclidean distance matrices where $[D_X(t)]_{ij} = \|\hat{\mathbf{x}}_i(t) - \hat{\mathbf{x}}_j(t)\|_2$ and $[D_H(t)]_{ij} = \|\mathbf{h}_i(t) - \mathbf{h}_j(t)\|_2$. The decoded coordinate retention and latent collapse metrics are formally defined as:
 \begin{equation}
   \label{eq:retention_collapse}
   \text{Coord Retention}(T) = \frac{\|D_X(T)\|_F}{\|D_X(0)\|_F}, \qquad
@@ -658,80 +658,80 @@ n-body (springs) & 467,151 & 93,264 & 114,128 \\
 
 \begin{table}[htbp]
 \centering
-\caption{Single-seed appendix sweep: MD17 systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Differences from Table~\ref{tab:multiseed} (3-seed aggregate) are expected. MSE column is single-seed sweep rollout MSE (not 3-seed means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. $R_{\text{edge}}$ is relative to decoded $t=0$.}
+\caption{Single-seed appendix sweep: MD17 systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Differences from Table~\ref{tab:multiseed} (3-seed aggregate) are expected. MSE column is single-seed sweep rollout MSE (not 3-seed means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT.}
 \label{tab:app_results_md17}
 \resizebox{\textwidth}{!}{
-\begin{tabular}{llrrrrrr}
+\begin{tabular}{llrrrrr}
 \toprule
-\textbf{System} & \textbf{Model} & \textbf{MSE} & \textbf{Bond (\AA)} & \textbf{Angle ($^\circ$)} & \textbf{Torsion ($^\circ$)} & \textbf{Latent $R_{\text{norm}}$} & \textbf{Coord $R_{\text{edge}}$} \\
+\textbf{System} & \textbf{Model} & \textbf{MSE} & \textbf{Bond (\AA)} & \textbf{Angle ($^\circ$)} & \textbf{Torsion ($^\circ$)} & \textbf{Latent $R_{\text{norm}}$} \\
 \midrule
-\multirow{3}{*}{aspirin} & Flat Koopman & 0.0614 & 0.0793 & 4.2965 & 4.6356 & 0.9999 & 0.9707 \\
- & Graph Koopman & 0.2350 & 0.0070 & 0.0992 & 0.2210 & 1.0000 & 0.9974 \\
- & Graph GRU & 0.1214 & 0.0608 & 5.6556 & 6.4670 & 0.9036 & 0.9584 \\
+\multirow{3}{*}{aspirin} & Flat Koopman & 0.0614 & 0.0793 & 4.2965 & 4.6356 & 0.9999 \\
+ & Graph Koopman & 0.2350 & 0.0070 & 0.0992 & 0.2210 & 1.0000 \\
+ & Graph GRU & 0.1214 & 0.0608 & 5.6556 & 6.4670 & 0.9036 \\
 \midrule
-\multirow{3}{*}{benzene} & Flat Koopman & 0.1011 & 0.1502 & 7.4919 & 5.8504 & 1.0000 & 0.8744 \\
- & Graph Koopman & 0.8057 & 0.0057 & 0.3491 & 0.5377 & 1.0000 & 0.9924 \\
- & Graph GRU & 0.0401 & 0.0803 & 3.6982 & 2.2197 & 0.7280 & 0.9554 \\
+\multirow{3}{*}{benzene} & Flat Koopman & 0.1011 & 0.1502 & 7.4919 & 5.8504 & 1.0000 \\
+ & Graph Koopman & 0.8057 & 0.0057 & 0.3491 & 0.5377 & 1.0000 \\
+ & Graph GRU & 0.0401 & 0.0803 & 3.6982 & 2.2197 & 0.7280 \\
 \midrule
-\multirow{3}{*}{ethanol} & Flat Koopman & 0.2016 & 0.1849 & 11.3877 & 15.1583 & 1.0000 & 0.9233 \\
- & Graph Koopman & 0.5810 & 0.0462 & 0.4722 & 0.4280 & 1.0000 & 0.9576 \\
- & Graph GRU & 0.1555 & 0.0922 & 3.8021 & 2.5854 & 0.8419 & 0.9206 \\
+\multirow{3}{*}{ethanol} & Flat Koopman & 0.2016 & 0.1849 & 11.3877 & 15.1583 & 1.0000 \\
+ & Graph Koopman & 0.5810 & 0.0462 & 0.4722 & 0.4280 & 1.0000 \\
+ & Graph GRU & 0.1555 & 0.0922 & 3.8021 & 2.5854 & 0.8419 \\
 \midrule
-\multirow{3}{*}{malonaldehyde} & Flat Koopman & 0.3849 & 0.1488 & 8.9481 & 15.7820 & 1.0000 & 0.9367 \\
- & Graph Koopman & 0.7545 & 0.0713 & 0.3029 & 0.5664 & 1.0000 & 0.9416 \\
- & Graph GRU & 0.3663 & 0.0595 & 2.9423 & 4.3160 & 0.9285 & 0.9262 \\
+\multirow{3}{*}{malonaldehyde} & Flat Koopman & 0.3849 & 0.1488 & 8.9481 & 15.7820 & 1.0000 \\
+ & Graph Koopman & 0.7545 & 0.0713 & 0.3029 & 0.5664 & 1.0000 \\
+ & Graph GRU & 0.3663 & 0.0595 & 2.9423 & 4.3160 & 0.9285 \\
 \midrule
-\multirow{3}{*}{naphthalene} & Flat Koopman & 0.0153 & 0.0655 & 1.2827 & 1.8633 & 0.9998 & 0.9371 \\
- & Graph Koopman & 0.0176 & 0.0082 & 0.1118 & 0.1587 & 1.0000 & 0.9925 \\
- & Graph GRU & 0.0103 & 0.0514 & 0.7937 & 1.4631 & 0.8766 & 0.9721 \\
+\multirow{3}{*}{naphthalene} & Flat Koopman & 0.0153 & 0.0655 & 1.2827 & 1.8633 & 0.9998 \\
+ & Graph Koopman & 0.0176 & 0.0082 & 0.1118 & 0.1587 & 1.0000 \\
+ & Graph GRU & 0.0103 & 0.0514 & 0.7937 & 1.4631 & 0.8766 \\
 \midrule
-\multirow{3}{*}{salicylic} & Flat Koopman & 0.0353 & 0.0516 & 2.0217 & 3.1501 & 0.9998 & 0.9296 \\
- & Graph Koopman & 0.7111 & 0.0117 & 0.3196 & 0.7558 & 1.0000 & 0.9990 \\
- & Graph GRU & 0.0202 & 0.0218 & 1.2715 & 1.0959 & 0.9580 & 0.9675 \\
+\multirow{3}{*}{salicylic} & Flat Koopman & 0.0353 & 0.0516 & 2.0217 & 3.1501 & 0.9998 \\
+ & Graph Koopman & 0.7111 & 0.0117 & 0.3196 & 0.7558 & 1.0000 \\
+ & Graph GRU & 0.0202 & 0.0218 & 1.2715 & 1.0959 & 0.9580 \\
 \midrule
-\multirow{3}{*}{toluene} & Flat Koopman & 0.1472 & 0.1515 & 6.6289 & 8.8714 & 0.9999 & 0.9064 \\
- & Graph Koopman & 0.6270 & 0.0171 & 0.6696 & 1.5430 & 1.0000 & 0.9720 \\
- & Graph GRU & 0.1050 & 0.0415 & 1.6042 & 2.3985 & 0.8988 & 0.9540 \\
+\multirow{3}{*}{toluene} & Flat Koopman & 0.1472 & 0.1515 & 6.6289 & 8.8714 & 0.9999 \\
+ & Graph Koopman & 0.6270 & 0.0171 & 0.6696 & 1.5430 & 1.0000 \\
+ & Graph GRU & 0.1050 & 0.0415 & 1.6042 & 2.3985 & 0.8988 \\
 \midrule
-\multirow{3}{*}{uracil} & Flat Koopman & 0.0452 & 0.1684 & 3.7764 & 4.1588 & 1.0000 & 0.8889 \\
- & Graph Koopman & 0.4327 & 0.0046 & 0.1494 & 0.2858 & 1.0000 & 0.9981 \\
- & Graph GRU & 0.0179 & 0.0482 & 1.3092 & 1.3362 & 0.8651 & 0.9547 \\
+\multirow{3}{*}{uracil} & Flat Koopman & 0.0452 & 0.1684 & 3.7764 & 4.1588 & 1.0000 \\
+ & Graph Koopman & 0.4327 & 0.0046 & 0.1494 & 0.2858 & 1.0000 \\
+ & Graph GRU & 0.0179 & 0.0482 & 1.3092 & 1.3362 & 0.8651 \\
 \bottomrule
 \end{tabular}}
 \end{table}
 
 \begin{table}[htbp]
 \centering
-\caption{Single-seed appendix sweep: MD22 and N-body systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Differences from Table~\ref{tab:multiseed} (3-seed aggregate) are expected. MSE column is single-seed sweep rollout MSE (not 3-seed means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. Springs \GGRU{} $R_{\text{edge}}$ is omitted; latent $R_{\text{norm}}=1.9794$ is the single-seed value.}
+\caption{Single-seed appendix sweep: MD22 and N-body systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Differences from Table~\ref{tab:multiseed} (3-seed aggregate) are expected. MSE column is single-seed sweep rollout MSE (not 3-seed means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. Springs \GGRU{} latent $R_{\text{norm}}=1.9794$ is the single-seed value.}
 \label{tab:app_results_md22}
 \resizebox{\textwidth}{!}{
-\begin{tabular}{llrrrrrr}
+\begin{tabular}{llrrrrr}
 \toprule
-\textbf{System} & \textbf{Model} & \textbf{MSE} & \textbf{Bond (\AA)} & \textbf{Angle ($^\circ$)} & \textbf{Torsion ($^\circ$)} & \textbf{Latent $R_{\text{norm}}$} & \textbf{Coord $R_{\text{edge}}$} \\
+\textbf{System} & \textbf{Model} & \textbf{MSE} & \textbf{Bond (\AA)} & \textbf{Angle ($^\circ$)} & \textbf{Torsion ($^\circ$)} & \textbf{Latent $R_{\text{norm}}$} \\
 \midrule
-\multirow{3}{*}{stachyose} & Flat Koopman & 5.0692 & 0.4611 & 48.0266 & 53.0592 & 0.9610 & 0.7275 \\
- & Graph Koopman & 1.9520 & 0.0133 & 0.7405 & 1.2178 & 1.0000 & 0.9960 \\
- & Graph GRU & 1.2673 & 0.1465 & 11.4753 & 14.3737 & 0.9312 & 0.8898 \\
+\multirow{3}{*}{stachyose} & Flat Koopman & 5.0692 & 0.4611 & 48.0266 & 53.0592 & 0.9610 \\
+ & Graph Koopman & 1.9520 & 0.0133 & 0.7405 & 1.2178 & 1.0000 \\
+ & Graph GRU & 1.2673 & 0.1465 & 11.4753 & 14.3737 & 0.9312 \\
 \midrule
-\multirow{3}{*}{ac-ala3-nhme} & Flat Koopman & 1.2724 & 0.3109 & 27.6694 & 39.7177 & 0.9977 & 0.8424 \\
- & Graph Koopman & 1.9273 & 0.0301 & 1.0744 & 2.3260 & 1.0000 & 0.9441 \\
- & Graph GRU & 0.4012 & 0.0989 & 5.5239 & 8.7518 & 0.8989 & 0.9122 \\
+\multirow{3}{*}{ac-ala3-nhme} & Flat Koopman & 1.2724 & 0.3109 & 27.6694 & 39.7177 & 0.9977 \\
+ & Graph Koopman & 1.9273 & 0.0301 & 1.0744 & 2.3260 & 1.0000 \\
+ & Graph GRU & 0.4012 & 0.0989 & 5.5239 & 8.7518 & 0.8989 \\
 \midrule
-\multirow{3}{*}{dha} & Flat Koopman & 4.0158 & 0.4839 & 44.3382 & 58.0033 & 0.9753 & 0.7741 \\
- & Graph Koopman & 3.9058 & 0.1024 & 1.0102 & 2.0399 & 1.0000 & 0.9623 \\
- & Graph GRU & 1.1227 & 0.1137 & 7.4557 & 15.2040 & 0.8485 & 0.8822 \\
+\multirow{3}{*}{dha} & Flat Koopman & 4.0158 & 0.4839 & 44.3382 & 58.0033 & 0.9753 \\
+ & Graph Koopman & 3.9058 & 0.1024 & 1.0102 & 2.0399 & 1.0000 \\
+ & Graph GRU & 1.1227 & 0.1137 & 7.4557 & 15.2040 & 0.8485 \\
 \midrule
-\multirow{3}{*}{at-at} & Flat Koopman & 1.8776 & 0.2880 & 28.6583 & 41.0566 & 0.9709 & 0.9972 \\
- & Graph Koopman & 7.6751 & 0.0295 & 0.3275 & 0.5732 & 1.0000 & 0.9868 \\
- & Graph GRU & 3.2551 & 0.3740 & 24.9426 & 34.4856 & 0.6333 & 0.8675 \\
+\multirow{3}{*}{at-at} & Flat Koopman & 1.8776 & 0.2880 & 28.6583 & 41.0566 & 0.9709 \\
+ & Graph Koopman & 7.6751 & 0.0295 & 0.3275 & 0.5732 & 1.0000 \\
+ & Graph GRU & 3.2551 & 0.3740 & 24.9426 & 34.4856 & 0.6333 \\
 \midrule
-\multirow{3}{*}{n-body (charged)} & Flat Koopman & 2.1350 & 0.3613 & 23.3443 & 45.2536 & 1.0000 & 0.9910 \\
- & Graph Koopman & 2.0397 & 0.0346 & 2.1319 & 5.9977 & 1.0000 & 0.9988 \\
- & Graph GRU & 2.0120 & 0.0928 & 4.5293 & 10.6446 & 1.4001 & 1.3161 \\
+\multirow{3}{*}{n-body (charged)} & Flat Koopman & 2.1350 & 0.3613 & 23.3443 & 45.2536 & 1.0000 \\
+ & Graph Koopman & 2.0397 & 0.0346 & 2.1319 & 5.9977 & 1.0000 \\
+ & Graph GRU & 2.0120 & 0.0928 & 4.5293 & 10.6446 & 1.4001 \\
 \midrule
-\multirow{3}{*}{n-body (springs)} & Flat Koopman & 0.1709 & 0.1015 & 13.2142 & 27.6922 & 1.0000 & 0.9827 \\
- & Graph Koopman & 0.1788 & 0.0182 & 2.0582 & 5.4004 & 1.0000 & 1.0112 \\
- & Graph GRU & 0.0256 & 0.5711 & 45.1807 & 79.2633 & 1.9794 & --- \\
+\multirow{3}{*}{n-body (springs)} & Flat Koopman & 0.1709 & 0.1015 & 13.2142 & 27.6922 & 1.0000 \\
+ & Graph Koopman & 0.1788 & 0.0182 & 2.0582 & 5.4004 & 1.0000 \\
+ & Graph GRU & 0.0256 & 0.5711 & 45.1807 & 79.2633 & 1.9794 \\
 \bottomrule
 \end{tabular}}
 \end{table}
@@ -800,7 +800,7 @@ Seed-averaged rollout MSE is lower for \GGRU{} under both settings.
 
 \begin{table}[H]
 \centering
-\caption{Aspirin loss ablation (full vs.\ auxiliary-loss ablated with collapse/iso off; mean $\pm$ sample std over seeds $\{42, 1337, 2026\}$). Full uses Eq.~\eqref{eq:total_loss}; noreg uses Eq.~\eqref{eq:noreg_loss}. Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT.}
+\caption{Aspirin loss ablation (full vs.\ auxiliary-loss ablated with collapse/iso off; mean $\pm$ sample std over seeds $\{42, 1337, 2026\}$). Full uses Eq.~\eqref{eq:total_loss}; noreg uses Eq.~\eqref{eq:noreg_loss}. Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. $R_{\text{edge}}$ is the ablation decoded-edge metric (bonded-distance ratio vs.\ decoded $t=0$).}
 \label{tab:loss_ablation_aspirin}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{llrrrrrr}
@@ -827,7 +827,7 @@ Seed-averaged MSE is lower for \GGRU{} on every system in Table~\ref{tab:loss_ab
 
 \begin{table}[H]
 \centering
-\caption{Auxiliary-loss ablation (collapse/iso off) on additional MD17/MD22 molecules (mean $\pm$ std over seeds $\{42, 1337, 2026\}$). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT.}
+\caption{Auxiliary-loss ablation (collapse/iso off) on additional MD17/MD22 molecules (mean $\pm$ std over seeds $\{42, 1337, 2026\}$). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. $R_{\text{edge}}$ is the ablation decoded-edge metric (bonded-distance ratio vs.\ decoded $t=0$).}
 \label{tab:loss_ablation_expand}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{llrrrrrr}
@@ -988,7 +988,7 @@ Bonded L1 is mixed (aspirin and dha favor \GKE{}; most MD17 molecules favor \GGR
 Horizon drift $\Delta$ is the clearer \GKE{} signal: \GGRU{} bonded $\Delta$ is large on benzene ($+18.4$), ethanol ($+10.9$), and malonaldehyde ($+16.4$), while \GKE{} stays near-flat or negative.
 Mean bonded lengths are usually near GT; stachyose \GKE{} ($0.19$\,\AA\ vs.\ GT $1.28$\,\AA) is a decode-collapse outlier and should not be read as a fair RDF comparison.
 We treat RDFs as a \emph{stability} nuance complementary to Table~\ref{tab:wilcoxon}, not as evidence that \GKE{} matches ground-truth $g(r)$ better in absolute terms.
-Reported topology scores remain decoded-$t=0$ bond/angle/torsion, $R_{\text{norm}}$, and $R_{\text{edge}}$ --- not vs.\ GT, and not physical energy.
+Reported topology scores remain decoded-$t=0$ bond/angle/torsion and $R_{\text{norm}}$ --- not vs.\ GT, and not physical energy. Ablation tables additionally report decoded $R_{\text{edge}}$ (Appendix~\ref{app:loss_ablation}).
 
 \section{Latent Norm Ratio and Coordinate Edge Ratio Computation}
 \label{app:norm_ratio}
@@ -999,7 +999,7 @@ We clarify the exact definitions and mathematical distinctions between the Laten
 Computes the ratio of mean squared latent representation norms at rollout step $T$ relative to step $0$: $R_{\text{norm}} = \mathbb{E}[\|\mathbf{h}_T\|_2^2] / \mathbb{E}[\|\mathbf{h}_0\|_2^2]$. For \GKE{}, $R_{\text{norm}} = 1$ in feature space is architectural: $\K = \exp(\Ask) \in SO(n)$ with implicit $\Delta t=1$ (Theorem~\ref{thm:so_n}.iii). $\mathcal{L}_{\text{collapse}}$ does not train $R_{\text{norm}}$.
 
 \paragraph{Decoded Coordinate Edge Ratio ($R_{\text{edge}}$).}
-Evaluates physical geometry after non-linear decoding into 3D spatial coordinates, relative to the trajectory's own decoded $t=0$ frame: $R_{\text{edge}} = \frac{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(T) - \hat{\mathbf{x}}_j(T)\|}{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(0) - \hat{\mathbf{x}}_j(0)\|}$. Because the spatial decoder $\text{Decoder}: \mathbf{h} \mapsto \hat{\mathbf{x}}$ is a non-linear neural network, $R_{\text{edge}}$ is not constrained to be identically $1.0000$. $\mathcal{L}_{\text{iso}}$ additionally pushes bonded distances during training. Springs \GGRU{} $R_{\text{edge}}$ is omitted from Tables~\ref{tab:multiseed} and \ref{tab:app_results_md22}.
+Evaluates decoded bonded distances after non-linear decoding into 3D spatial coordinates, relative to the trajectory's own decoded $t=0$ frame: $R_{\text{edge}} = \frac{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(T) - \hat{\mathbf{x}}_j(T)\|}{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(0) - \hat{\mathbf{x}}_j(0)\|}$. Because the spatial decoder $\text{Decoder}: \mathbf{h} \mapsto \hat{\mathbf{x}}$ is a non-linear neural network, $R_{\text{edge}}$ is not constrained to be identically $1.0000$. $\mathcal{L}_{\text{iso}}$ additionally pushes bonded distances during training. This decoded-edge metric is reported in the auxiliary-loss ablation (Tables~\ref{tab:loss_ablation_aspirin}--\ref{tab:loss_ablation_expand}), not in Tables~\ref{tab:multiseed}, \ref{tab:app_results_md17}, or \ref{tab:app_results_md22}.
 
 The formal pseudocode procedure for computing the Decoded Coordinate Edge Ratio ($R_{\text{edge}}$) across an autoregressive rollout horizon is detailed in Algorithm~\ref{alg:coord_edge_ratio}.
 
@@ -1013,7 +1013,7 @@ The formal pseudocode procedure for computing the Decoded Coordinate Edge Ratio 
     \State Compute inter-atomic displacement vectors for all graph edges $(u_m, v_m) \in \mathcal{E}$:
     \Statex \qquad $\mathbf{d}_m(t) \leftarrow \hat{\mathbf{x}}_{u_m}(t) - \hat{\mathbf{x}}_{v_m}(t) \quad \forall m \in \{1, \dots, E\}$
     \State Calculate edge length norms: $\ell_m(t) \leftarrow \|\mathbf{d}_m(t)\|_2$
-    \State Calculate mean physical edge length at step $t$: $E(t) \leftarrow \frac{1}{E} \sum_{m=1}^E \ell_m(t)$
+    \State Calculate mean decoded edge length at step $t$: $E(t) \leftarrow \frac{1}{E} \sum_{m=1}^E \ell_m(t)$
     \State Compute coordinate edge ratio relative to initial frame $t=0$:
     \Statex \qquad $r(t) \leftarrow \frac{E(t)}{E(0) + \varepsilon}$
 \EndFor
@@ -1034,7 +1034,7 @@ The repository includes:
 \begin{itemize}
   \item Complete PyTorch implementations of \GKE{}, \EGKN{}, \GGRU{}, \FKoop{}, and \EGNN{}.
   \item Standardized dataset adapters for MD17, MD22, and N-body physical systems.
-  \item Automated multi-seed evaluation suites and physical diagnostic utilities for computing bond, angle, torsion, and coordinate edge ratios ($R_{\text{edge}}$).
+  \item Automated multi-seed evaluation suites and decoded diagnostic utilities for computing bond, angle, torsion, and (in the loss-ablation appendix) coordinate edge ratios ($R_{\text{edge}}$).
   \item CLI and Streamlit GUI interfaces for executing training and evaluation pipelines.
 \end{itemize}
 
