@@ -30,7 +30,7 @@ Default weights are **fixed** at **10 / 1 / 2 / 5** (reconstruction / dynamics /
 - **Collapse:** encoder anti-freeze hinge. Does **not** train `R_norm`.
 - **Iso:** bonded-distance MSE on decoded coordinates; this term **does** push bond / bond-margin numbers.
 - **`R_norm`:** architectural `SO(n)` from `K = exp(A_glob)` with implicit `Δt = 1` (not a physical integrator step). Collapse does not enforce it.
-- Bond / angle / torsion eval scores in `physics_eval.py` are **drift from decoded t=0**, not vs ground-truth topology.
+- Bond / angle / torsion eval scores are **drift from decoded t=0**, not vs ground-truth topology.
 
 ---
 
