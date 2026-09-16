@@ -1,8 +1,8 @@
 \documentclass{article}
 
-% LoG 2026 style - uses log_2026 style file (update when official 2026 file is released)
+% LoG 2026 style in official preprint/arXiv mode (not review/anonymous; not camera-ready proceedings).
 % Download from: https://logconference.org/
-\usepackage{log_2026}
+\usepackage[preprint]{log_2026}
 \usepackage[numbers,compress,sort]{natbib}
 
 \usepackage[utf8]{inputenc}
@@ -19,7 +19,7 @@
 \usepackage{xcolor}
 \usepackage{multirow}
 \usepackage{array}
-\usepackage{bbm}
+% bbm unused; omitted so a stock TeX Live tree compiles without fonts-extra.
 \usepackage{enumitem}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
@@ -61,7 +61,7 @@
 Long-Horizon Graph Simulation}
 % ============================================================
 
-\author{%
+\author[Abhilash Hathwar]{%
   Abhilash Hathwar\\
   Independent Researcher\\
   \email{abhilashhathwar20@gmail.com}
@@ -434,7 +434,7 @@ This indicates that SEGNO's structural stabilization keeps rollouts finite; E-GK
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.42\textwidth]{results/dynamics_tradeoff_dha_egkn_vs_segno.png}
+    \includegraphics[width=0.42\textwidth]{figures/dynamics_tradeoff_dha_egkn_vs_segno.png}
     \caption{E-GKN vs.\ SEGNO on MD22 DHA, 29 rollout steps. Top: rollout MSE. Rows 2--4: pairwise coordinate-distance ratio, node-embedding-distance ratio, and \emph{latent-norm} ratio (not physical energy; not a tabulated 14-system metric). Ratios are relative to decoded/latent $t=0$. SEGNO has slightly higher coordinate-distance retention here; E-GKN has lower MSE and $\rho(K)=1$ on invariant features by construction.}
     \label{fig:segno_rollout}
 \end{figure}
