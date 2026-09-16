@@ -1,57 +1,67 @@
-# Beyond MSE: Geometry-Preserving Latent Dynamics for Long-Horizon Graph Simulation
+# Beyond MSE: Orthogonal Latent Dynamics for Long-Horizon Graph Simulation
 
-Official implementation of the paper **"Beyond MSE: Geometry-Preserving Latent Dynamics for Long-Horizon Graph Simulation"**.
-
----
-
-## Executive Summary & Abstract
-
-Graph neural networks (GNNs) achieve high short-horizon accuracy for physical simulation, yet accumulate severe latent drift over long-horizon autoregressive rollouts. Unconstrained temporal transitions (e.g., GRUs) allow latent representation norms to progressively expand or contract, producing trajectories with competitive pointwise rollout MSE despite catastrophic physical structural breakdown (bond stretching, angle distortion, and centroid collapse).
-
-We introduce the **Koopman Graph Evolver (KGE)** and its SE(3)-equivariant extension **E-GKN**, which replace unconstrained recurrent transitions with an orthogonal Koopman operator acting in latent space. Parameterizing the transition via a matrix exponential $K = \exp(A_{\text{skew}} \Delta t)$ guarantees $K \in \text{SO}(n)$, preserving latent norm and volume by construction ($R_{\text{norm}} = 1.0000$).
-
-Evaluated across **14 physical systems** (8 MD17 molecules, 4 MD22 macromolecules, and 2 N-body particle systems), geometry-preserving latent transitions yield statistically significant reductions in structural drift ($p \le 3.1 \times 10^{-4}$, Wilcoxon signed-rank test), maintaining physical coordinate edge length ratios ($R_{\text{edge}} \approx 1.0$) across extended rollouts.
+Official implementation of **"Beyond MSE: Orthogonal Latent Dynamics for Long-Horizon Graph Simulation"**. The reported model is Kronecker **GraphAwareKoopmanNet** (`K_glob`). A legacy node-wise 64×64 `GraphKoopmanNet` exists in the repository but is **not the reported model**.
 
 ---
 
-## Key Contributions & Mathematical Framework
+## Executive summary
 
-1. **Characterization of Structural Drift & The MSE Paradox:** We show that standard rollout MSE fails to reflect physical degradation, rewarding models that expand uniformly or collapse toward spatial centroids. Physical topology metrics (bond, angle, torsion drift, and coordinate edge ratios) are required for faithful physical evaluation.
-2. **Volume-Preserving Koopman Transitions:** Enforcing $K = \exp(A_{\text{skew}} \Delta t) \in \text{SO}(n)$ guarantees:
-   - $K^T K = I$ (Orthogonality)
-   - $\det(K) = 1$ (Orientation and volume preservation)
-   - $\|Kz\|_2 = \|z\|_2$ (Norm preservation in latent feature space)
-3. **Physical Regularization in 3D Space:** While the non-linear spatial decoder does not mathematically mandate 3D coordinate edge ratios $R_{\text{edge}} = 1.0$ identically, latent orthogonality strongly regularizes spatial decoding, keeping $R_{\text{edge}} \approx 1.0$ ($0.9416$–$1.0112$) across extended rollouts.
-4. **SE(3)-Equivariant Extension (E-GKN):** Augmenting equivariant message passing with shared node-local Koopman transitions prevents numerical divergence ($10^{27}$ / NaNs) present in standard EGNNs on large flexible macromolecules.
+GNNs can keep one-step error low while decoded topology degrades over autoregressive rollouts (MSE-versus-topology). **KGE** replaces an unconstrained recurrent cell with `K = exp(A_skew) ∈ SO(n)` (implicit `Δt = 1`). That constrains **latent** norm/volume; it is **not** energy conservation, Liouville mechanics, or decoded-bond preservation by construction.
+
+Bond / angle / torsion in the tables below are **drift from decoded t=0**, not vs ground-truth topology. Bonded margins are also trained by an iso loss (weights **10 / 1 / 2 / 5**). Across 14 systems we report a stability–accuracy tradeoff: lower t=0 drift vs G-GRU, often **higher** MSE. E-GKN vs EGNN is empirical under this protocol.
+
+---
+
+## Key points (matches code)
+
+1. **MSE-versus-topology:** rollout MSE can miss decoded t=0 bond/angle/torsion drift.
+2. **SO(n) is latent-only:** `K^T K = I`, `det(K)=1`, `||Kz||_2 = ||z||_2` in latent space (Theorem 1). Decoder geometry is empirical.
+3. **Iso trains bonds.** `R_edge ≈ 1` is not mandated by SO(n) alone.
+4. **E-GKN** uses the same Kronecker `K_glob` on invariant features (not independent node-local cells). Finite rollouts vs EGNN overflow are a protocol result, not physical energy.
+
+---
+
+## Training objective
+
+Default weights are **fixed** at **10 / 1 / 2 / 5** (reconstruction / dynamics / collapse / iso). There is no annealed λ.
+
+- **Reconstruction:** teacher-forced autoencoder — encode the current graph, decode, score vs the **same-timestep** coordinates. Not next-frame prediction.
+- **Dynamics:** one-step latent consistency (`K s_t` vs encoder `s_{t+1}`).
+- **Collapse:** encoder anti-freeze hinge. Does **not** train `R_norm`.
+- **Iso:** bonded-distance MSE on decoded coordinates; this term **does** push bond / bond-margin numbers.
+- **`R_norm`:** architectural `SO(n)` from `K = exp(A_glob)` with implicit `Δt = 1` (not a physical integrator step). Collapse does not enforce it.
+- Bond / angle / torsion eval scores are **drift from decoded t=0**, not vs ground-truth topology.
 
 ---
 
 ## Empirical Benchmark Results (14 Physical Systems)
 
-### 1. Multi-Seed Robustness (Averaged Over Seeds {42, 1337, 2026})
+### 1. Multi-seed robustness (3-seed aggregate, seeds {42, 1337, 2026})
 
-| System | Model | Rollout MSE (29-step) | Bond Drift (Å) | Angle Drift (°) | Torsion Drift (°) | Physical Coord Edge Ratio ($R_{\text{edge}}$) |
-|:---|:---|:---:|:---:|:---:|:---:|:---:|
-| **aspirin** | Flat Koopman | 0.0715 ± 0.008 | 0.0816 ± 0.004 | 4.55 ± 0.45 | 5.38 ± 0.32 | 0.9707 |
-| | **Graph Koopman** | 0.2411 ± 0.003 | **0.0045 ± 0.004** | **0.09 ± 0.02** | **0.15 ± 0.06** | **0.9974** |
-| | Graph GRU | 0.1388 ± 0.031 | 0.0689 ± 0.012 | 5.49 ± 1.13 | 6.42 ± 0.62 | 0.9584 |
-| **malonaldehyde** | Flat Koopman | 0.4002 ± 0.003 | 0.1699 ± 0.022 | 10.51 ± 1.29 | 16.73 ± 1.28 | 0.9367 |
-| | **Graph Koopman** | 0.9151 ± 0.048 | **0.0905 ± 0.030** | **0.46 ± 0.34** | **0.83 ± 0.40** | **0.9416** |
-| | Graph GRU | 0.3532 ± 0.005 | 0.0981 ± 0.005 | 3.72 ± 0.66 | 4.19 ± 1.36 | 0.9262 |
-| **at-at** | Flat Koopman | 3.6341 ± 1.041 | 0.4499 ± 0.146 | 37.14 ± 9.74 | 48.21 ± 11.20 | 0.9972 |
-| | **Graph Koopman** | 6.2917 ± 0.514 | **0.0240 ± 0.010** | **0.63 ± 0.26** | **1.15 ± 0.48** | **0.9868** |
-| | Graph GRU | 2.6390 ± 0.158 | 0.2514 ± 0.038 | 17.98 ± 1.96 | 26.37 ± 3.13 | 0.8675 |
-| **springs** | Flat Koopman | 0.1756 ± 0.001 | 0.1075 ± 0.026 | 14.55 ± 2.87 | 29.38 ± 5.56 | 0.9827 |
-| | **Graph Koopman** | 0.1764 ± 0.003 | **0.0248 ± 0.009** | **2.59 ± 1.01** | **6.05 ± 1.79** | **1.0112** |
-| | Graph GRU | 0.0531 ± 0.002 | 0.6167 ± 0.013 | 46.51 ± 0.87 | 80.21 ± 0.95 | 1.6290 |
+Bond / angle / torsion = **decoded t=0 drift**, not vs GT. Baselines are **not** an identical-objective bake-off (G-GRU uses 4-step dyn unroll; Flat-K drops iso). The table below is the 3-seed aggregate; appendix tables in the paper are a single-seed sweep — do not cite single-seed appendix cells as multi-seed means. Springs MSE is mean±sample stdev over seeds {42, 1337, 2026}.
+
+| System | Model | Rollout MSE (29-step) | Bond Drift (Å) | Angle Drift (°) | Torsion Drift (°) |
+|:---|:---|:---:|:---:|:---:|:---:|
+| **aspirin** | Flat Koopman | 0.0715 ± 0.008 | 0.0816 ± 0.004 | 4.55 ± 0.45 | 5.38 ± 0.32 |
+| | **Graph Koopman** | 0.2411 ± 0.003 | **0.0045 ± 0.004** | **0.09 ± 0.02** | **0.15 ± 0.06** |
+| | Graph GRU | 0.1388 ± 0.031 | 0.0689 ± 0.012 | 5.49 ± 1.13 | 6.42 ± 0.62 |
+| **malonaldehyde** | Flat Koopman | 0.4002 ± 0.003 | 0.1699 ± 0.022 | 10.51 ± 1.29 | 16.73 ± 1.28 |
+| | **Graph Koopman** | 0.9151 ± 0.048 | **0.0905 ± 0.030** | **0.46 ± 0.34** | **0.83 ± 0.40** |
+| | Graph GRU | 0.3532 ± 0.005 | 0.0981 ± 0.005 | 3.72 ± 0.66 | 4.19 ± 1.36 |
+| **at-at** | Flat Koopman | 3.6341 ± 1.041 | 0.4499 ± 0.146 | 37.14 ± 9.74 | 48.21 ± 11.20 |
+| | **Graph Koopman** | 6.2917 ± 0.514 | **0.0240 ± 0.010** | **0.63 ± 0.26** | **1.15 ± 0.48** |
+| | Graph GRU | 2.6390 ± 0.158 | 0.2514 ± 0.038 | 17.98 ± 1.96 | 26.37 ± 3.13 |
+| **springs** | Flat Koopman | 0.1762 ± 0.0011 | 0.1075 ± 0.026 | 14.55 ± 2.87 | 29.38 ± 5.56 |
+| | **Graph Koopman** | 0.1768 ± 0.003 | **0.0248 ± 0.009** | **2.59 ± 1.01** | **6.05 ± 1.79** |
+| | Graph GRU | 0.0455 ± 0.0185 | 0.6167 ± 0.013 | 46.51 ± 0.87 | 80.21 ± 0.95 |
 
 ### 2. Statistical Significance Across All 14 Systems
 
-One-sided Wilcoxon signed-rank test results comparing Graph Koopman (KGE) vs. Graph GRU (G-GRU) across 14 physical systems:
+One-sided Wilcoxon on **decoded t=0 drift** (KGE vs G-GRU) on the 14-system single-seed appendix sweep, not the 3-seed means in the table above. Not a proof of physical superiority. MSE is often lower for G-GRU.
 
 | Metric | KGE Win Rate | Wilcoxon Statistic | p-value |
 |:---|:---:|:---:|:---:|
-| **Bond Drift (Å)** | 13/14 | 1.5 | $3.05 \times 10^{-4}$ |
+| **Bond Drift (Å)** | 13/14 | 3.0 | $3.05 \times 10^{-4}$ |
 | **Angle Drift (°)** | 14/14 | 0.0 | $6.10 \times 10^{-5}$ |
 | **Torsion Drift (°)** | 14/14 | 0.0 | $6.10 \times 10^{-5}$ |
 | **Latent Norm Ratio \|R_norm - 1\|** | 14/14 | 0.0 | $6.10 \times 10^{-5}$ |
@@ -95,7 +105,7 @@ model = GraphAwareKoopmanNet(
     n_atoms=3
 )
 
-# 3. Perform volume-preserving long-horizon rollout
+# 3. Perform SO(n) latent rollout (decoded geometry is empirical)
 h0 = torch.randn(1, 5, 3, 64)  # Initial trajectory (B, T, N, D)
 rollout = model.forward_rollout(h0, steps=30)
 
@@ -158,7 +168,6 @@ docker compose run --build --rm koopman train --md22 stachyose --model koopman -
 │   └── cli.py                 # Command-line interface entrypoint
 ├── paper/                     # Manuscript source files, LaTeX tables, & figures
 │   └── main.tex               # Conference manuscript LaTeX source
-├── eval_logs/                 # Raw experimental log files & diagnostic evaluation outputs
 ├── app.py                     # Interactive Streamlit Web GUI Dashboard
 ├── requirements.txt           # Python package dependencies
 ├── Dockerfile                 # Container setup

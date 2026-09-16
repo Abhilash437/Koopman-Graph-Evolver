@@ -19,7 +19,15 @@
 /NBody
 /scratch
 /SEGNO
-/paper
+# Track manuscript source under paper/; ignore compiled PDFs and OS junk.
+paper/**/*.pdf
+paper/**/.DS_Store
+# Author-internal: rebuttal letters, discussion drafts, plans, Track B notes.
+paper/rebuttal.md
+paper/discussion_*.md
+paper/plan_*.md
+**/TRACK-B*.md
+**/NUMBERS-BIBLE*.md
 /eval_logs
 dist/
 build/

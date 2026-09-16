@@ -1,5 +1,6 @@
 from .blocks import GraphEncoder, GraphDecoder, EquivariantGraphEncoder, EquivariantGraphDecoder, DummyDecoder
 from koopman_evolver.utils.geometry import safe_matrix_exp
+from koopman_evolver.utils.loss_weights import get_loss_weights
 from torch_geometric.utils import to_dense_batch
 import torch
 import torch.nn as nn
@@ -29,10 +30,10 @@ except ImportError:
 
 class GraphKoopmanNet(nn.Module):
     """
-    OBSOLETE: Legacy Koopman dynamics model from Experiment 3.
-    This class operates directly on GNN node embeddings without explicit physical constraints.
-    It is superseded by `GraphAwareKoopmanNet` which strictly enforces pairwise distances
-    and graph energy conservation during the latent rollout.
+    NOT THE PAPER MODEL. Legacy Experiment-3 cell: a single shared 64×64
+    node-wise matrix exponential. Not CLI-wired. Reported runs use
+    GraphAwareKoopmanNet (Kronecker K_glob). Do not cite this class for
+    paper tables. Does not conserve physical energy.
     """
     def __init__(self, node_dim: int = 6, edge_dim: int = 1, hidden_dim: int = 64, latent_dim: int = 576, n_atoms: int = 9):
         super().__init__()
@@ -69,9 +70,7 @@ class GraphKoopmanNet(nn.Module):
 
 
 class GraphAwareKoopmanNet(nn.Module):
-    """
-    Graph-Aware Koopman dynamics model with learnable coupling parameter alpha.
-    """
+    """Reported KGE: Kronecker GraphAware K_glob (not dense Nd×Nd, not legacy 64×64)."""
     def __init__(self, edge_index, node_dim: int = 6, edge_dim: int = 1, hidden_dim: int = 64, latent_dim: int = 576, n_atoms: int = 9):
         super().__init__()
         self.latent_dim = latent_dim
@@ -140,6 +139,14 @@ class GraphAwareKoopmanNet(nn.Module):
     def get_global_K(self):
         return self.K_global.detach().cpu().numpy()
     def compute_loss(self, outputs, targets, lengths, epoch, node_features=None):
+        """Multi-task loss matching paper Eq. (total loss).
+
+        L = 10*L_recon + 1*L_dyn + 2*L_collapse + 5*L_iso (fixed weights; ``epoch`` unused).
+        L_recon: teacher-forced AE (encode current -> decode -> same-timestep coords).
+        L_dyn: one-step latent consistency (K s_t vs encoder s_{t+1}).
+        L_collapse: encoder anti-freeze hinge; does not train R_norm.
+        L_iso: bonded-distance MSE on decoded coords.
+        """
         h_seq = outputs  # (B, T, n_atoms, hidden_dim)
         B, T, n_atoms, hidden_dim = h_seq.shape
 
@@ -174,13 +181,21 @@ class GraphAwareKoopmanNet(nn.Module):
             l_recon = 0.0
             l_iso = 0.0
 
-        total_loss = l_dyn + 2.0 * l_collapse + 10.0 * l_recon + 5.0 * l_iso
+        w = get_loss_weights(self)
+        total_loss = (
+            w["dyn"] * l_dyn
+            + w["collapse"] * l_collapse
+            + w["recon"] * l_recon
+            + w["iso"] * l_iso
+        )
         return total_loss, {
             'loss': total_loss.item(),
             'l_dyn': l_dyn.item(),
             'l_collapse': l_collapse.item(),
             'l_recon': l_recon.item() if node_features is not None else 0.0,
             'l_iso': l_iso.item() if node_features is not None else 0.0,
+            'lambda_collapse': w["collapse"],
+            'lambda_iso': w["iso"],
             'alpha': float(self.alpha.item())
         }
 
@@ -294,13 +309,21 @@ class EquivariantKoopmanNet(nn.Module):
             l_recon = 0.0
             l_iso = 0.0
 
-        total_loss = l_dyn + 2.0 * l_collapse + 10.0 * l_recon + 5.0 * l_iso
+        w = get_loss_weights(self)
+        total_loss = (
+            w["dyn"] * l_dyn
+            + w["collapse"] * l_collapse
+            + w["recon"] * l_recon
+            + w["iso"] * l_iso
+        )
         return total_loss, {
             'loss': total_loss.item(),
             'l_dyn': l_dyn.item(),
             'l_collapse': l_collapse.item(),
             'l_recon': l_recon.item() if node_features is not None else 0.0,
             'l_iso': l_iso.item() if node_features is not None else 0.0,
+            'lambda_collapse': w["collapse"],
+            'lambda_iso': w["iso"],
             'alpha': float(self.alpha.item())
         }
 

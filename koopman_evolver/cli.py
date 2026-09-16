@@ -18,13 +18,59 @@ from koopman_evolver.models.koopman_net import GraphAwareKoopmanNet, Equivariant
 from koopman_evolver.models.baselines import GraphAwareGRUNet, FlatKoopmanNet, EGNNDynamicsNet, SEGNODynamicsNet
 from koopman_evolver.training.trainer import GraphAwareTrainer
 from koopman_evolver.evaluation.physics_eval import GraphAwareKoopmanEvaluator, PhysicsEval, ThreeWayAblationEvaluator
+from koopman_evolver.utils.loss_weights import (
+    DEFAULT_LOSS_WEIGHTS,
+    apply_loss_weights,
+    format_loss_weights,
+    resolve_loss_weights,
+)
 
-def get_device():
-    if torch.cuda.is_available():
-        return "cuda"
-    elif torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
+def get_device(requested: str = "auto"):
+    """
+    Resolve the compute device.
+
+    requested:
+      - "auto": cuda > mps > cpu
+      - "cuda" / "cpu" / "mps": force that device (cuda fails loudly if unavailable)
+    """
+    cuda_ok = torch.cuda.is_available()
+    mps_ok = hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
+
+    if requested == "auto":
+        if cuda_ok:
+            device = "cuda"
+        elif mps_ok:
+            device = "mps"
+        else:
+            device = "cpu"
+    elif requested == "cuda":
+        if not cuda_ok:
+            raise RuntimeError(
+                "Requested --device cuda but torch.cuda.is_available() is False. "
+                "Check: (1) GPU attached to the VM, (2) nvidia-smi works, "
+                "(3) PyTorch was installed with CUDA "
+                "(e.g. pip install torch --index-url https://download.pytorch.org/whl/cu124)."
+            )
+        device = "cuda"
+    elif requested in ("cpu", "mps"):
+        if requested == "mps" and not mps_ok:
+            raise RuntimeError("Requested --device mps but MPS is not available.")
+        device = requested
+    else:
+        raise ValueError(f"Unknown device '{requested}'. Use auto|cuda|cpu|mps.")
+
+    print("=" * 60)
+    print(f" Device selection: requested={requested} -> using={device}")
+    print(f"  torch={torch.__version__}")
+    print(f"  torch.cuda.is_available()={cuda_ok}")
+    if cuda_ok:
+        print(f"  cuda_device_count={torch.cuda.device_count()}")
+        print(f"  cuda_device_name={torch.cuda.get_device_name(0)}")
+    else:
+        print("  CUDA not visible to PyTorch (common causes: CPU-only torch wheel,")
+        print("  missing NVIDIA driver, or VM has no GPU attached).")
+    print("=" * 60)
+    return device
 
 def build_parser():
     parser = argparse.ArgumentParser(description="Koopman Graph Evolver CLI")
@@ -49,6 +95,55 @@ def build_parser():
     train_parser.add_argument("--weight-decay", type=float, default=1e-4, help="AdamW weight decay")
     train_parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
     train_parser.add_argument("--out-dir", type=str, default="./checkpoints", help="Output directory for checkpoints")
+    train_parser.add_argument(
+        "--device",
+        type=str,
+        default="auto",
+        choices=["auto", "cuda", "cpu", "mps"],
+        help="Compute device (default: auto). Use 'cuda' to fail if GPU is unavailable.",
+    )
+    train_parser.add_argument(
+        "--lambda-dyn",
+        type=float,
+        default=DEFAULT_LOSS_WEIGHTS["dyn"],
+        help="Weight for latent dynamics consistency loss (default: 1.0)",
+    )
+    train_parser.add_argument(
+        "--lambda-recon",
+        type=float,
+        default=DEFAULT_LOSS_WEIGHTS["recon"],
+        help="Weight for teacher-forced AE reconstruction (encode current → decode → same-timestep coords; default: 10.0)",
+    )
+    train_parser.add_argument(
+        "--lambda-collapse",
+        type=float,
+        default=DEFAULT_LOSS_WEIGHTS["collapse"],
+        help="Weight for encoder anti-freeze hinge (default: 2.0; set 0 to disable; does not train R_norm)",
+    )
+    train_parser.add_argument(
+        "--lambda-iso",
+        type=float,
+        default=DEFAULT_LOSS_WEIGHTS["iso"],
+        help="Weight for isometric bonded-distance MSE (default: 5.0; set 0 to disable)",
+    )
+    train_parser.add_argument(
+        "--run-tag",
+        type=str,
+        default=None,
+        help="Optional suffix appended to checkpoint names (e.g. full, noreg)",
+    )
+    train_parser.add_argument(
+        "--unroll-steps",
+        type=int,
+        default=4,
+        help="G-GRU only: latent pushforward horizon in L_dyn (paper default 4). Ignored for other models.",
+    )
+    train_parser.add_argument(
+        "--train-noise-std",
+        type=float,
+        default=0.0,
+        help="G-GRU only: Gaussian noise std added to latent state before pushforward (0=off).",
+    )
     
     # Eval command
     eval_parser = subparsers.add_parser("eval", help="Evaluate a trained model")
@@ -68,6 +163,13 @@ def build_parser():
     eval_parser.add_argument("--segno-ckpt", type=str, default=None, help="Path to SEGNO baseline checkpoint")
     eval_parser.add_argument("--rollout-steps", type=int, default=29, help="Number of steps for rollout evaluation")
     eval_parser.add_argument("--out-dir", type=str, default="./results", help="Output directory for plots")
+    eval_parser.add_argument(
+        "--device",
+        type=str,
+        default="auto",
+        choices=["auto", "cuda", "cpu", "mps"],
+        help="Compute device (default: auto). Use 'cuda' to fail if GPU is unavailable.",
+    )
     
     return parser
 
@@ -108,7 +210,7 @@ def train(args):
         torch.backends.cudnn.benchmark = False
         print(f"[seed={args.seed}] Random seeds set for reproducibility.")
     
-    device = get_device()
+    device = get_device(getattr(args, "device", "auto"))
     if args.md17:
         dataset, name = "md17", args.md17
     elif args.md22:
@@ -140,32 +242,44 @@ def train(args):
     
     # Latent dim = n_atoms * hidden_dim
     latent_dim = n_atoms * args.hidden_dim
+    loss_weights = resolve_loss_weights(
+        lambda_dyn=args.lambda_dyn,
+        lambda_recon=args.lambda_recon,
+        lambda_collapse=args.lambda_collapse,
+        lambda_iso=args.lambda_iso,
+    )
+    seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
+    run_tag = f"_{args.run_tag}" if args.run_tag else ""
     
     print(f"[{name}] Initializing {args.model} model...")
+    print(f"[{name}] Loss weights: {format_loss_weights(loss_weights)}")
     if args.model == "koopman":
         model = GraphAwareKoopmanNet(
             edge_index=edge_index,
             node_dim=6, edge_dim=1, hidden_dim=args.hidden_dim, 
             latent_dim=latent_dim, n_atoms=n_atoms
         )
-        seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
-        ckpt_name = f"graph_aware_koopman_{name}{seed_tag}_best.pt"
+        ckpt_name = f"graph_aware_koopman_{name}{seed_tag}{run_tag}_best.pt"
     elif args.model == "gru":
         model = GraphAwareGRUNet(
             edge_index=edge_index,
             node_dim=6, edge_dim=1, hidden_dim=args.hidden_dim, 
-            latent_dim=latent_dim, n_atoms=n_atoms
+            latent_dim=latent_dim, n_atoms=n_atoms,
+            unroll_steps=args.unroll_steps,
+            train_noise_std=args.train_noise_std,
         )
-        seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
-        ckpt_name = f"graph_aware_gru_{name}{seed_tag}_best.pt"
+        print(
+            f"[{name}] G-GRU pushforward: unroll_steps={args.unroll_steps} "
+            f"train_noise_std={args.train_noise_std}"
+        )
+        ckpt_name = f"graph_aware_gru_{name}{seed_tag}{run_tag}_best.pt"
     elif args.model == "flat":
         model = FlatKoopmanNet(
             n_atoms=n_atoms,
             input_dim=6,
             latent_dim=latent_dim
         )
-        seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
-        ckpt_name = f"flat_koopman_{name}{seed_tag}_best.pt"
+        ckpt_name = f"flat_koopman_{name}{seed_tag}{run_tag}_best.pt"
         
     elif args.model == "e-gkn":
         model = EquivariantKoopmanNet(
@@ -173,8 +287,7 @@ def train(args):
             node_dim=6, edge_dim=1, hidden_dim=args.hidden_dim, 
             latent_dim=latent_dim, n_atoms=n_atoms
         )
-        seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
-        ckpt_name = f"e_gkn_{name}{seed_tag}_best.pt"
+        ckpt_name = f"e_gkn_{name}{seed_tag}{run_tag}_best.pt"
         
     elif args.model == "egnn":
         model = EGNNDynamicsNet(
@@ -182,8 +295,7 @@ def train(args):
             node_dim=6, edge_dim=1, hidden_dim=args.hidden_dim, 
             latent_dim=latent_dim, n_atoms=n_atoms
         )
-        seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
-        ckpt_name = f"egnn_{name}{seed_tag}_best.pt"
+        ckpt_name = f"egnn_{name}{seed_tag}{run_tag}_best.pt"
         
     elif args.model == "segno":
         model = SEGNODynamicsNet(
@@ -191,8 +303,8 @@ def train(args):
             node_dim=6, edge_dim=1, hidden_dim=args.hidden_dim, 
             latent_dim=latent_dim, n_atoms=n_atoms
         )
-        seed_tag = f"_seed{args.seed}" if args.seed is not None else ""
-        ckpt_name = f"segno_{name}{seed_tag}_best.pt"
+        ckpt_name = f"segno_{name}{seed_tag}{run_tag}_best.pt"
+    apply_loss_weights(model, loss_weights)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     
     os.makedirs(args.out_dir, exist_ok=True)
@@ -213,7 +325,7 @@ def train(args):
     print(f"[{name}] Training complete. Best checkpoint saved to {os.path.join(args.out_dir, ckpt_name)}")
 
 def evaluate(args):
-    device = get_device()
+    device = get_device(getattr(args, "device", "auto"))
     if args.md17:
         dataset, name = "md17", args.md17
     elif args.md22:

@@ -1,0 +1,1046 @@
+\documentclass{article}
+
+% LoG 2026 style in official preprint/arXiv mode (not review/anonymous; not camera-ready proceedings).
+% Download from: https://logconference.org/
+\usepackage[preprint]{log_2026}
+\usepackage[numbers,compress,sort]{natbib}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{multirow}
+\usepackage{array}
+% bbm unused; omitted so a stock TeX Live tree compiles without fonts-extra.
+\usepackage{enumitem}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{float}
+\usepackage{titlesec}
+\titlespacing*{\section}{0pt}{4.5pt plus 1pt minus 1pt}{2.5pt plus 1pt minus 1pt}
+\titlespacing*{\subsection}{0pt}{3.5pt plus 1pt minus 1pt}{1.5pt plus 1pt minus 1pt}
+\titlespacing*{\paragraph}{0pt}{1.5pt plus 1pt minus 1pt}{0.6em}
+\linespread{0.965}
+
+% ---- float & caption spacing tuning for page budget ----
+\setlength{\floatsep}{4pt plus 1pt minus 1pt}
+\setlength{\textfloatsep}{5pt plus 1pt minus 2pt}
+\setlength{\intextsep}{4pt plus 1pt minus 1pt}
+\setlength{\abovecaptionskip}{2.5pt plus 1pt minus 1pt}
+\setlength{\belowcaptionskip}{0.5pt plus 1pt minus 1pt}
+
+% ---- convenience macros ----
+\newcommand{\K}{\mathbf{K}}
+\newcommand{\z}{\mathbf{z}}
+\newcommand{\x}{\mathbf{x}}
+\newcommand{\Ask}{A_{\mathrm{skew}}}
+\newcommand{\tr}{\operatorname{tr}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\GKE}{\textsc{KGE}}
+\newcommand{\EGKN}{\textsc{E-GKN}}
+\newcommand{\EGNN}{\textsc{EGNN}}
+\newcommand{\GGRU}{\textsc{G-GRU}}
+\newcommand{\FKoop}{\textsc{Flat-K}}
+
+% ---- theorem environments ----
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}{Corollary}
+\newtheorem{proposition}{Proposition}
+\newtheorem{remark}{Remark}
+
+% ============================================================
+\title[Orthogonal Latent Dynamics for Graph Simulation]{Beyond MSE: Orthogonal Latent Dynamics for\\
+Long-Horizon Graph Simulation}
+% ============================================================
+
+\author[Abhilash Hathwar]{%
+  Abhilash Hathwar\\
+  Independent Researcher\\
+  \email{abhilashhathwar20@gmail.com}
+}
+
+\begin{document}
+\maketitle
+
+% ============================================================
+\begin{abstract}
+% ============================================================
+Graph neural networks for physical simulation often keep one-step error low while decoded topology degrades over autoregressive rollouts: rollout MSE can remain competitive even as bonds and angles drift (an MSE-versus-topology diagnostic). We introduce the Koopman Graph Evolver (KGE), replacing an unconstrained recurrent cell with an orthogonal Koopman operator $\mathbf{K}=\exp(\mathbf{A}_{\mathrm{skew}})\in SO(n)$ (implicit $\Delta t=1$). This constrains \emph{latent} Euclidean norm and latent volume; it is not a theorem of energy conservation, Liouville dynamics, or decoded geometry. Bond, angle, and torsion scores are empirical drift from each trajectory's own decoded $t=0$ frame, not versus ground truth. Headline bonded margins are also trained by an isometric loss (fixed weights $10/1/2/5$ for recon/dyn/collapse/iso). Across 14 systems we report a stability--accuracy tradeoff: lower $t=0$ topology drift and $R_{\mathrm{norm}}$ closer to one versus unconstrained recurrent baselines, often with higher pointwise MSE. An equivariant extension (E-GKN) has lower rollout MSE than EGNN on the reported molecules under this protocol.\end{abstract}
+
+% ============================================================
+\section{Introduction}
+\label{sec:intro}
+% ============================================================
+
+Graph neural networks (GNNs) have emerged as a principal tool for simulating complex physical systems, including molecular dynamics and particle interactions, by mapping snapshot graphs $\mathcal{G}_t$ to latent representations, executing a temporal transition, and decoding subsequent states~\citep{bronstein2021geometric}. While these models demonstrate strong short-horizon performance, their behavior over extended autoregressive rollouts presents critical failure modes. Specifically, how unconstrained temporal transitions affect latent manifold stability over long prediction steps remains insufficiently characterized.
+
+During multi-step prediction, standard recurrent transitions (e.g., GRUs) and unconstrained message-passing updates systematically alter latent representation magnitudes. Without structural constraints on the transition operator, latent vector norms expand or contract, causing compounding \emph{latent drift}. In decoded coordinates, this degradation shows up as structural distortion: on springs, Graph-GRU decoded $t=0$ bond drift is $0.6167\pm 0.0131$\,\AA\ and angle drift $46.5105\pm 0.8687^\circ$ (Table~\ref{tab:multiseed}), and unconstrained latent-norm ratios diverge up to $109.5\times$ on \texttt{ac-ala3-nhme} (Section~\ref{sec:experiments}).
+
+Crucially, standard evaluation metrics often fail to reflect this decoded structural degradation. We observe an \emph{MSE paradox}: on the $N$-body \texttt{springs} benchmark, a Graph GRU obtains a lower 3-seed rollout MSE ($0.0455 \pm 0.0185$, with individual runs reaching $2.63\times10^{-2}$) than our proposed model ($0.1768 \pm 0.0030$), even as its 3-seed latent-norm ratio reaches $2.16\times$ and $t=0$ bond/angle/torsion drift show large decoded expansion (Table~\ref{tab:multiseed}). Mean squared error can reward models that collapse toward spatial centroids or expand uniformly, neither of which preserves inter-atomic topology.
+
+These observations suggest a clear hypothesis: \emph{constraining the latent transition to preserve vector norms and volume will prevent unbounded latent-norm drift;} decoded topology may then drift less, which we treat as empirical.
+
+We test this hypothesis via the \textbf{Koopman Graph Evolver (\GKE{})}. Drawing from Koopman operator theory~\citep{koopman1931hamiltonian}, we replace recurrent transitions with a linear operator $\K$ acting in a lifted latent space. By parameterizing $\K = \exp(\Ask)$ via a learned skew-symmetric matrix $\Ask$ (implicit $\Delta t=1$), we enforce $\K \in SO(n)$, so $\K$ is orthogonal and preserves \emph{latent} norm and volume. This is an inductive bias on the temporal cell, not decoded-bond preservation by construction, and not a claim that geometry comes from the orthogonal cell alone ($\mathcal{L}_{\text{iso}}$ also trains bonded distances).
+
+Across 14 benchmark systems, empirical results show a stability--accuracy tradeoff: lower decoded-$t=0$ topology drift, often with higher pointwise rollout MSE.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+  \item We characterize an \emph{MSE-versus-topology diagnostic}: rollout MSE can miss decoded structural drift (bond/angle/torsion measured from decoded $t=0$, not vs.\ ground truth).
+  \item We show that an \emph{orthogonal $SO(n)$ latent transition} is a useful inductive bias against multi-step latent-norm collapse and expansion (Theorem~\ref{thm:so_n} is latent-only).
+  \item We introduce \GKE{} and its $SE(3)$-equivariant extension \EGKN{}. Wilcoxon tests on those empirical $t=0$-drift scores favor \GKE{} vs.\ \GGRU{} on the 14-system single-seed appendix sweep (Table~\ref{tab:wilcoxon}; not the 3-seed means in Table~\ref{tab:multiseed}); MSE is often higher for \GKE{}. \EGKN{} vs.\ \EGNN{} is an empirical protocol comparison, not an energy result.
+  \item We open-source our codebase, evaluation pipelines, and benchmark splits.
+\end{enumerate}
+
+% ============================================================
+\section{Related Work}
+\label{sec:related}
+% ============================================================
+
+Our work sits at the intersection of three areas: long-horizon graph dynamics, equivariant spatial representations, and structured temporal evolution.
+
+\paragraph{Long-horizon graph dynamics.}
+Stabilizing autoregressive rollouts over graphs remains an active challenge.  SEGNO~\citep{liu2023segno} extends EGNNs with steerable features to capture richer SE(3) representations.  GAMD~\citep{wang2023gamd} introduces force-based training objectives, while HERMES~\citep{fu2023simulate} adds a Hamiltonian-aware training loss to encourage energy conservation.  These approaches primarily improve the spatial representation or the training signal; the temporal transition itself remains unconstrained.  Our work is complementary: we keep the spatial encoder generic and instead constrain the \emph{temporal} cell to an orthogonal $SO(n)$ latent map.
+
+\paragraph{Equivariant GNNs for physical simulation.}
+EGNN~\citep{satorras2021n}, NequIP~\citep{batzner2022nequip}, DimeNet~\citep{klicpera2020directional}, and PaiNN~\citep{schutt2021equivariant} achieve SE(3)-equivariance for molecular property prediction and force estimation.  These architectures are powerful \emph{spatial encoders} but do not natively perform temporal rollouts; they must be wrapped in a recurrent cell or ODE solver for multi-step prediction.  The Koopman transition proposed here is, in principle, compatible with any spatial encoder that separates encoding from temporal evolution.
+
+\paragraph{Koopman operator theory.}
+The Koopman operator lifts nonlinear dynamics into an infinite-dimensional linear space~\citep{koopman1931hamiltonian}.  Lusch et al.~\cite{lusch2018deep} and Otto et al.~\cite{otto2019linearly} introduced deep learning approaches to approximate finite-dimensional Koopman eigenfunctions; Morton et al.~\cite{morton2018deep} applied Koopman networks to physical control tasks; Azencot et al.~\cite{azencot2020forecasting} explored orthogonality constraints for time-series forecasting.  Our work extends this line to the graph setting, using the Koopman operator as an $SO(n)$ constraint on the \emph{latent} time step within a graph encoder-decoder.
+
+\paragraph{Physics-informed neural networks.}
+HNN~\citep{greydanus2019hamiltonian} and LNN~\citep{cranmer2020lagrangian} constrain network outputs to obey Hamiltonian or Lagrangian mechanics.  However, generating trajectories requires integrating the learned vector field with an ODE solver, which itself accumulates numerical drift over long horizons.  \GKE{} sidesteps continuous-time integration: the matrix exponential provides an exact discrete-time orthogonal latent step (implicit $\Delta t=1$), not a physical integrator.
+
+\paragraph{Orthogonal recurrent networks.}
+Orthogonal and unitary recurrent neural networks~\citep{arjovsky2016unitary,helfrich2018orthogonal} enforce norm-preserving hidden state updates to prevent exploding and vanishing gradients in sequence processing. While sharing the mathematical parameterization of skew-symmetric matrix exponentials or Cayley transforms, these architectures focus on temporal sequence modeling rather than physical graph simulation. Our work connects matrix-exponential transitions to linear Koopman operator theory for graph dynamics: orthogonal hidden updates bound \emph{latent} norms. Decoded topology is empirical, not a theorem.
+
+% ============================================================
+\section{Method}
+\label{sec:method}
+% ============================================================
+
+\begin{figure}[t]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.2}
+  \begin{tabular}{c}
+    \textbf{Standard Recurrent Transition (e.g., GRU)} \\
+    Graph $\to$ Encoder $\to$ $\z_t$ $\to$ \textcolor{red}{GRU} $\to$ \textcolor{red}{$\|\z_{t+k}\| \to \infty$} $\to$ Decoder $\to$ \textcolor{red}{Structural Drift} \\
+    \\
+    \textbf{Koopman Graph Evolver (\GKE{})} \\
+    Graph $\to$ Encoder $\to$ $\z_t$ $\to$ \textcolor{blue}{$\K\in SO(n)$} $\to$ \textcolor{blue}{$\|\z_{t+k}\| = \|\z_t\|$} $\to$ Decoder $\to$ \textcolor{blue}{Bounded latent norm}
+  \end{tabular}
+  \vspace{0.5em}
+  \caption{Conceptual comparison of temporal integration. Top: unconstrained recurrent transitions allow the latent norm to drift. Bottom: \GKE{} applies an $SO(n)$ transition that maintains \emph{latent} norm by construction. Decoded bond/angle/torsion are empirical drift from decoded $t=0$.}
+  \label{fig:concept}
+\end{figure}
+
+\subsection{Problem Setup}
+\label{sec:setup}
+
+Let $\mathcal{G}_t = (\mathcal{V}, \mathcal{E}, \x_t)$ be a graph with node 3D coordinates $\x_t \in \R^{N \times 3}$ and fixed topology $\mathcal{E}$. Given an initial context window of snapshot graphs $\{\mathcal{G}_{t-\tau},\dots,\mathcal{G}_t\}$, the objective is to generate autoregressive predictions $\mathcal{G}_{t+k}$ for long horizons $k \gg 1$ with the aim of limiting decoded drift in bond lengths, bond angles, and dihedral torsions.
+
+\subsection{Koopman Graph Evolver Architecture}
+
+\paragraph{GNN Encoder.}
+A message-passing GNN $\phi_\theta$ embeds the spatial graph into node-level latent representations: $\mathbf{H}_t = \phi_\theta(\mathcal{G}_t) \in \R^{N \times d}$. The reported encoder is a \emph{2-layer} edge-conditioned MPNN with hidden dimension $d=64$ (not a 4-layer GCN). Node embeddings are \emph{concatenated} into a graph-level state $\mathbf{s}_t = [\mathbf{h}_{t,1}; \dots; \mathbf{h}_{t,N}] \in \R^{Nd}$ --- this is not global pooling. A legacy node-wise $64\times 64$ cell exists in the repository but is \emph{not} the reported model.
+
+\paragraph{Koopman Transition Operator.}
+Instead of non-linear recurrent cells (which lack spectral bounds) or continuous ODE integration (which incurs numerical drift), temporal evolution is performed linearly in the lifted latent space:
+\begin{equation}
+  \label{eq:koopman_step}
+  \mathbf{s}_{t+1} = \K_{\text{global}}\,\mathbf{s}_t, \qquad
+  \K_{\text{global}} = \exp\!\bigl(\mathbf{A}_{\text{glob}}\bigr),
+\end{equation}
+\begin{equation}
+  \label{eq:koopman_kron}
+  \mathbf{A}_{\text{glob}} = \mathbf{I}_N \otimes \mathbf{A}_{\text{self}} + \alpha \cdot \mathbf{P}_{\text{sym}} \otimes \mathbf{A}_{\text{edge}},
+\end{equation}
+where $\mathbf{A}_{\text{self}}, \mathbf{A}_{\text{edge}} \in \R^{d \times d}$ are shared learned skew-symmetric generator matrices ($\mathbf{A}^\top = -\mathbf{A}$), $\mathbf{P}_{\text{sym}} = \frac{1}{2}(\mathbf{P} + \mathbf{P}^\top)$ is the symmetrized row-normalized adjacency matrix (with $\mathbf{P} = \mathbf{D}^{-1}\mathbf{A}$ guaranteeing $\mathbf{P}_{\text{sym}} = \mathbf{P}_{\text{sym}}^\top$), and $\alpha$ is a learned graph coupling coefficient. The reported operator is this Kronecker $\K_{\text{global}}$, not a dense learned $Nd\times Nd$ matrix. The implementation applies $\exp(\mathbf{A}_{\text{glob}})$ with implicit $\Delta t = 1$; $\Delta t$ is not a physical integrator step. Because $\mathbf{A}_{\text{self}}$ and $\mathbf{A}_{\text{edge}}$ operate on the latent channel dimension ($d=64$) and are shared across nodes, the Koopman transition requires only $2 \times \frac{d(d-1)}{2} + 1 = 4,033$ independent parameters ($8,193$ parameter tensor entries), which is independent of the atom count $N$. Consequently, overall model parameter scaling across molecular systems is linear $O(N)$ (driven solely by the graph decoder MLP, Table~\ref{tab:app_params}), avoiding quadratic $O(N^2 d^2)$ parameter explosion.
+
+\paragraph{Graph Decoder.}
+A multi-layer perceptron $\psi_\theta: \R^{Nd} \to \R^{N \times 3}$ maps the evolved graph state vector $\mathbf{s}_{t+1}$ to the 3D coordinates of all $N$ nodes simultaneously: $\hat{\x}_{t+1} = \psi_\theta(\mathbf{s}_{t+1})$. Node identity is implicitly encoded by each node's fixed position within the concatenated vector (node $i$ always occupies indices $[id, (i{+}1)d)$). Because the decoder operates on an ordered concatenated vector, it is not permutation-equivariant; however, molecular graphs have canonical atom orderings, making this design appropriate for the benchmarks considered. For the equivariant extension (E-GKN), the decoder is instead an EGNN message-passing layer that preserves $SE(3)$ equivariance (Section~\ref{sec:egkn}).
+
+\paragraph{Training Objective.}
+The reported model is trained with a multi-task objective with \emph{fixed} weights---no epoch-annealed $\lambda$:
+\begin{equation}
+  \label{eq:total_loss}
+  \mathcal{L}_{\text{total}} = 10.0\,\mathcal{L}_{\text{recon}} + 1.0\,\mathcal{L}_{\text{dyn}} + 2.0\,\mathcal{L}_{\text{collapse}} + 5.0\,\mathcal{L}_{\text{iso}}.
+\end{equation}
+Let $\mathbf{H}_t=\phi_\theta(\mathcal{G}_t)$ be the encoder embedding of the \emph{current} snapshot, $\mathbf{s}_t$ the concatenated graph state, and $\hat{\x}_t=\psi_\theta(\mathbf{s}_t)$ the decoder applied to that same encoded state. Then:
+\begin{itemize}[leftmargin=1.5em,itemsep=1pt,topsep=1pt]
+  \item $\mathcal{L}_{\text{recon}} = \|\hat{\x}_t - \x_t\|_F^2$ is a teacher-forced autoencoder term: encode the current graph, decode, and score against the \emph{same-timestep} coordinates. It is not next-frame prediction.
+  \item $\mathcal{L}_{\text{dyn}} = \|\K_{\text{global}}\mathbf{s}_t - \mathbf{s}_{t+1}\|_F^2$ is one-step latent consistency between the Koopman image of the current encoder state and the encoder state of the next snapshot.
+  \item $\mathcal{L}_{\text{collapse}} = \max(0,\, 0.05 - \rho_{\text{rel}})$ is an encoder anti-freeze hinge on consecutive encoder embeddings (not on $\K\mathbf{s}_t$). With per-node hidden vectors $\mathbf{h}_t$, $\rho_{\text{rel}} = \mathbb{E}\bigl[\|\mathbf{h}_{t+1}-\mathbf{h}_t\|_2/(\|\mathbf{h}_t\|_2+\epsilon)\bigr]$. This term does \emph{not} train $R_{\mathrm{norm}}$.
+  \item $\mathcal{L}_{\text{iso}}$ is a bonded-distance MSE on the same reconstructed coordinates, $\mathrm{MSE}(\hat{d}_{ij}(t), d_{ij}(t))$ over training edges $(i,j)\in\mathcal{E}$ with $\hat{d}_{ij}(t)=\|\hat{\x}_i(t)-\hat{\x}_j(t)\|_2$. This term \emph{does} push bonded-distance / bond-margin numbers; decoded geometry is not obtained from the orthogonal cell alone.
+\end{itemize}
+$R_{\mathrm{norm}}=1$ for \GKE{} is an architectural $SO(n)$ property of $\K_{\text{global}}=\exp(\mathbf{A}_{\mathrm{glob}})$ (Theorem~\ref{thm:so_n}); $\mathcal{L}_{\text{collapse}}$ does not enforce it. To isolate $\mathcal{L}_{\text{collapse}}$ and $\mathcal{L}_{\text{iso}}$, we additionally report a controlled ablation with $\lambda_{\text{collapse}}=\lambda_{\text{iso}}=0$ in Appendix~\ref{app:loss_ablation}.
+
+\subsection{Latent $SO(n)$ Constraint}
+\label{sec:theory}
+
+An unconstrained transition operator $\K$ can possess eigenvalues with $|\lambda| \neq 1$. Under multi-step autoregressive rollout $\bar{\z}_{t+k} = \K^k \bar{\z}_t$, components with $|\lambda| > 1$ grow exponentially, while components with $|\lambda| < 1$ shrink to zero. Both behaviors distort the latent manifold and result in structural drift when mapped through the decoder.
+
+To prevent latent contraction and expansion, we constrain $\K$ to be orthogonal: $\K^\top\K = I$. Parameterizing $\K$ via the matrix exponential of a skew-symmetric matrix enforces this constraint structurally:
+
+\begin{theorem}[Volume-Preserving Koopman Operator]
+\label{thm:so_n}
+Let $\Ask \in \R^{d \times d}$ satisfy $\Ask^{\top} = -\Ask$. Then $\K = \exp(\Ask\,\Delta t)$ (in code, $\Delta t=1$) satisfies:
+\begin{enumerate}
+  \item[(i)] $\K^{\top}\K = I$ \quad (orthogonality, $\K \in O(n)$),
+  \item[(ii)] $\det(\K) = 1$ \quad (orientation-preservation, $\K \in SO(n)$),
+  \item[(iii)] $\|\K\z\|_2 = \|\z\|_2$ for all $\z \in \R^d$ \quad (norm-preservation).
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+\textit{(i)}\ $\Ask^{\top} = -\Ask$ implies
+$(\exp(\Ask))^{\top} = \exp(\Ask^{\top}) = \exp(-\Ask) = (\exp(\Ask))^{-1}$,
+so $\K^{\top}\K = I$.
+
+\textit{(ii)}\ By Jacobi's formula, $\det(\exp(M)) = \exp(\tr(M))$ for any square matrix $M$. Since $\Ask$ is skew-symmetric, $A_{ii} = 0$, so $\tr(\Ask) = 0$. Hence:
+\begin{equation}
+  \det(\K) = \det\!\bigl(\exp(\Ask\,\Delta t)\bigr)
+           = \exp\!\bigl(\Delta t\cdot\tr(\Ask)\bigr) = e^0 = 1.
+\end{equation}
+
+\textit{(iii)}\ $\|\K\z\|_2^2 = \z^{\top}\K^{\top}\K\z = \z^{\top}\z = \|\z\|_2^2$.
+\qed
+\end{proof}
+
+\begin{remark}[Latent constraint, not physical mechanics]
+\label{cor:liouville}
+$K=\exp(A_{\mathrm{skew}}\Delta t)\in\mathrm{SO}(n)$ preserves \textbf{latent} Euclidean norm and latent volume. This is an inductive bias on the temporal cell (related to orthogonal/unitary RNNs), \textbf{not} a claim that decoded trajectories conserve energy, obey Liouville's theorem in phase space, or inherit Hamiltonian/symplectic structure. Orthogonality and symplecticity coincide only in special cases; we do \textbf{not} assert $K$ is symplectic, nor that observation-space geometry is preserved by Theorem~\ref{thm:so_n}.
+\end{remark}
+
+\paragraph{Limitation 1.}
+Guarantees are latent-only. The decoder is a learned nonlinear map; bonds, angles, and RDFs are \textbf{empirical} outcomes, not theorems.
+
+\paragraph{Limitation 2.}
+$K\in\mathrm{SO}(n)$ forbids dissipative latent eigenvalues. Thermostatted / dissipative MD is outside what the constraint can represent; any gains there are empirical, not continuum legitimacy.
+
+\begin{remark}[Practical consequence]
+Norm-preservation (Theorem~\ref{thm:so_n}.iii) guarantees that decoder \emph{inputs} maintain bounded latent norm across rollout steps $k$. That bound does not transfer to decoded coordinates (Limitation~1).
+\end{remark}
+
+\subsection{Equivariant Extension: E-GKN}
+\label{sec:egkn}
+
+For molecular systems requiring $SE(3)$ equivariance, we substitute the MPNN encoder with $E(n)$-equivariant GNN (EGNN) layers~\citep{satorras2021n}, forming \EGKN{}. The architecture separates each node representation $\z_i = [\x_i; \mathbf{h}_i]$ into 3D coordinates $\x_i \in \R^3$ and invariant features $\mathbf{h}_i \in \R^{d-3}$. The Koopman transition is the same Kronecker $\K_{\text{global}}$ construction as \GKE{}, acting only on the concatenated invariant feature channels --- not independent per-node (``node-local'') operators.
+
+\paragraph{Shared Koopman operator.}
+E-GKN learns a \emph{single} pair of skew-symmetric generators $\Ask^{\text{self}}, \Ask^{\text{edge}} \in \R^{(d-3) \times (d-3)}$, shared across all nodes. The global Koopman operator is constructed via Kronecker products that couple node dynamics through the graph topology:
+\begin{equation}
+  \K_{\text{global}} = \exp\!\bigl(\underbrace{\mathbf{I}_N \otimes \Ask^{\text{self}}}_{\text{shared self-dynamics}} + \alpha \cdot \underbrace{\mathbf{P}_{\text{sym}} \otimes \Ask^{\text{edge}}}_{\text{topology-coupled dynamics}}\bigr),
+\end{equation}
+where $\mathbf{P}_{\text{sym}} = \frac{1}{2}(\mathbf{P} + \mathbf{P}^\top)$ is the symmetrized row-normalized adjacency matrix (with $\mathbf{P} = \mathbf{D}^{-1}\mathbf{A}$ guaranteeing $\mathbf{P}_{\text{sym}} = \mathbf{P}_{\text{sym}}^\top$), $\alpha$ is a learned coupling coefficient, and $\otimes$ denotes the Kronecker product. As in Eq.~\eqref{eq:koopman_step}, the matrix exponential uses implicit $\Delta t=1$. This operator acts on the concatenated invariant features of all nodes simultaneously.
+
+\paragraph{Equivariant coordinate update.}
+Since the Koopman operator evolves only invariant features $\mathbf{h}_i$, coordinates $\x_i$ are updated separately via an EGNN message-passing layer conditioned on the evolved features: $\x_{t+1} = \text{EGNN}(\mathbf{h}_{t+1}, \x_t, \mathcal{E})$. This preserves $SE(3)$ equivariance of the coordinate output, since EGNN layers are equivariant by construction.
+
+\paragraph{Scope of theoretical guarantees.}
+The sum $\mathbf{I}_N \otimes \Ask^{\text{self}} + \alpha \cdot \mathbf{P}_{\text{sym}} \otimes \Ask^{\text{edge}}$ remains skew-symmetric, so $\K_{\text{global}} \in SO(N(d{-}3))$ and Theorem~\ref{thm:so_n} applies to the invariant feature channels. However, because coordinates pass through a non-linear EGNN decoder, the full state vector $[\x; \mathbf{h}]$ does not enjoy exact norm preservation --- only the feature channels do (see Appendix~\ref{app:egkn_rho}).
+
+% ============================================================
+\section{Experiments}
+\label{sec:experiments}
+% ============================================================
+
+\subsection{Setup}
+
+\paragraph{Datasets.}
+We evaluate across 14 physical dynamical systems spanning three benchmark domains:
+(1) \textbf{MD17}~\citep{chmiela2017machine} (8 small-to-medium organic molecules: aspirin, benzene, ethanol, malonaldehyde, naphthalene, salicylic acid, toluene, uracil);
+(2) \textbf{MD22}~\citep{chmiela2023accurate} (4 larger, flexible biomacromolecules: stachyose, Ac-Ala$_3$-NHMe, DHA, AT-AT); and
+(3) \textbf{$N$-body} simulations (charged particles under Coulomb forces and spring-coupled particle networks).
+
+\paragraph{Baselines and Model Isolation.}
+To evaluate whether an orthogonal latent transition changes multi-step $t=0$-drift scores independently of spatial encoder complexity, we construct comparative baselines that isolate the temporal cell:
+\begin{itemize}
+  \item \textbf{\GGRU{}} (Graph GRU, 252K parameters): Combines the same 2-layer MPNN encoder as \GKE{} with an unconstrained GRU cell.
+  \item \textbf{\GKE{}} (Graph Koopman Evolver, 231K parameters): Uses that encoder with Kronecker $\K_{\text{global}}\in SO(n)$ in place of the GRU.
+  \item \textbf{\FKoop{}} (Flat Koopman, 2.86M parameters): MLP encoder with a matrix-exponential Koopman transition (no graph MPNN). (All parameter counts in this section are for aspirin; \FKoop{} scales with $n_{\text{atoms}}^2$ --- see Appendix B.)
+  \item \textbf{\EGNN{}} vs. \textbf{\EGKN{}}: Standard $SE(3)$-equivariant message passing versus its Kronecker-Koopman counterpart.
+\end{itemize}
+
+\paragraph{Loss asymmetries (not an identical-objective bake-off).}
+Isolation of the temporal cell is the design; identical training objectives are not. \GGRU{} trains $\mathcal{L}_{\text{dyn}}$ with a 4-step latent unroll; \GKE{} uses single-step latent consistency. \FKoop{} omits $\mathcal{L}_{\text{iso}}$ (no bonded-graph term). \textsc{SEGNO} zeros $\mathcal{L}_{\text{collapse}}$. Do not read the tables as ``same recipe, swap the cell.''
+
+\paragraph{Decoded $t=0$ topology metrics.}
+In addition to standard rollout MSE at step $k=29$, we compute structural topology metrics at the final prediction step. Bond, angle, and torsion scores measure \emph{drift of the decoded rollout from its own decoded $t=0$ frame}, not error versus ground-truth topology:
+\begin{itemize}
+  \item \textbf{Bond Drift (\AA):} Mean absolute change in inter-atomic bond lengths relative to the trajectory's decoded $t=0$ coordinates.
+  \item \textbf{Angle Drift ($^\circ$):} Mean absolute change in 3-body bond angles relative to decoded $t=0$.
+  \item \textbf{Torsion Drift ($^\circ$):} Mean absolute change in 4-body dihedral angles relative to decoded $t=0$.
+  \item \textbf{Latent Norm Ratio ($R_{\text{norm}}$):} The ratio of mean latent representation norms at step $T$ versus $t=0$, $R_{\text{norm}} = \frac{\mathbb{E}[\| \mathbf{h}_{t=T} \|_2^2]}{\mathbb{E}[\| \mathbf{h}_{t=0} \|_2^2]}$. For \GKE{}, $R_{\text{norm}} = 1$ in latent feature space is architectural $SO(n)$ (Theorem~\ref{thm:so_n}.iii), not a trained energy.
+  \item \textbf{Decoded Coordinate Edge Ratio ($R_{\text{edge}}$):} The ratio of total decoded inter-atomic bond distances in 3D coordinate space between step $T$ and decoded step $0$, $R_{\text{edge}} = \frac{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(T) - \hat{\mathbf{x}}_j(T)\|}{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(0) - \hat{\mathbf{x}}_j(0)\|}$. Because the coordinate decoder is a non-linear mapping, $R_{\text{edge}}$ is not mathematically mandated to be identically $1.0000$. $\mathcal{L}_{\text{iso}}$ additionally pushes bonded distances during training. This ablation decoded-edge metric is reported in Appendix~\ref{app:loss_ablation}, not in Tables~\ref{tab:multiseed}, \ref{tab:app_results_md17}, or \ref{tab:app_results_md22}.
+\end{itemize}
+
+\paragraph{Training Protocol.}
+All models are trained for 100 epochs with \textbf{AdamW} ($\text{lr}=10^{-3}$, weight decay $10^{-4}$). There is \textbf{no cosine schedule}. Batch size is 16, or 32 for some MD17/$N$-body runs and 16 for MD22 (Table~\ref{tab:hyperparams_summary}). Checkpoints are selected on validation $R^2$. Multi-seed training uses $\{42, 1337, 2026\}$. \GGRU{} $\mathcal{L}_{\text{dyn}}$ uses a 4-step unroll.
+
+\subsection{Main Results: Structural Drift Mitigation}
+\label{sec:main_results}
+
+Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22} present final-step $t=0$-drift metrics for \GKE{} versus \GGRU{} across all 14 systems. This tests whether an $SO(n)$ latent cell changes those empirical scores relative to an unconstrained GRU, not whether decoded molecules obey physical mechanics.
+
+Empirically, tabulated 14-system comparisons favor \GKE{} on $t=0$ bond/angle/torsion drift, with the usual MSE cost (Table~\ref{tab:wilcoxon} is the single-seed appendix sweep). On AT-AT (Table~\ref{tab:multiseed}, 3-seed), \GGRU{} angle drift is $17.9786\pm 1.9597^\circ$ versus \GKE{} $0.6270\pm 0.2627^\circ$; appendix angles (Table~\ref{tab:app_results_md22}) are a different single-seed protocol and are not multi-seed means. On malonaldehyde (Table~\ref{tab:multiseed}), bond drift is $0.0905\pm 0.0303$\,\AA\ (\GKE{}) versus $0.0981\pm 0.0053$\,\AA\ (\GGRU{}). These are decoded-$t=0$ drifts, not vs.\ GT. Bonded margins are also trained by $\mathcal{L}_{\text{iso}}$ (Appendix~\ref{app:loss_ablation}).
+
+\subsection{Statistical Significance}
+\label{sec:stats}
+
+To check that the $t=0$-drift gaps hold across systems, we use one-sided Wilcoxon signed-rank tests on paired system metrics between \GKE{} and \GGRU{}.
+
+\begin{table}[htbp]
+  \centering
+  \caption{One-sided Wilcoxon signed-rank tests of \GKE{} vs.\ \GGRU{}. Wilcoxon pairs are the single-seed appendix results (Tables~\ref{tab:app_results_md17}--\ref{tab:app_results_md22}); Table~\ref{tab:multiseed} reports 3-seed means separately. Bond/angle/torsion = mean absolute drift from each trajectory's own decoded frame at $t=0$.}
+  \label{tab:wilcoxon}
+  \begin{tabular}{lccc}
+    \toprule
+    Metric & \GKE{} Win Rate & Wilcoxon Statistic & $p$-value \\
+    \midrule
+    Bond Drift (\AA)      & 13/14 & 3.0 & $3.05\times10^{-4}$ \\
+    Angle Drift ($^\circ$) & 14/14 & 0.0 & $6.10\times10^{-5}$ \\
+    Torsion Drift ($^\circ$)& 14/14 & 0.0 & $6.10\times10^{-5}$ \\
+    Latent Norm Ratio ($|R_{\text{norm}} - 1|$) & 14/14 & 0.0 & $6.10\times10^{-5}$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+All listed $t=0$-drift scores favor \GKE{} on this single-seed appendix test ($p < 3.1\times10^{-4}$).
+Coarse coordinate-norm retention is weaker ($p=0.076$). The tests summarize the same decoded $t=0$ scores as the appendix tables, alongside the MSE-versus-topology tradeoff in the main results.
+
+\subsection{Multi-Seed Robustness Across All 14 Systems}
+\label{sec:multiseed}
+
+To confirm that performance gains are robust across random weight initializations and not artifacts of seed selection, we conduct multi-seed training and evaluation across random seeds ($\{42, 1337, 2026\}$) for all 14 physical dynamical systems across all three ablation models (\GKE{}, \GGRU{}, and \FKoop{}).
+
+Table~\ref{tab:multiseed} summarizes representative systems: aspirin, malonaldehyde, AT-AT, and springs (3-seed aggregate). Full 14-system \emph{single-seed} rows are Appendix Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22}; differences from the 3-seed table are expected (different protocol).
+
+\paragraph{Evaluation protocols.}
+\textbf{3-seed aggregate:} train+eval mean$\pm$std over seeds $\{42, 1337, 2026\}$ (Table~\ref{tab:multiseed}).
+\textbf{Single-seed appendix sweep:} one seed per system (Tables~\ref{tab:app_results_md17}--\ref{tab:app_results_md22}).
+\textbf{Seed-42 stabilizer appendix:} seed $42$ only (Appendix~\ref{app:gru_stabilizers}).
+\textbf{Auxiliary-loss ablated:} seeds $\{42,1337,2026\}$ with $\lambda_{\text{collapse}}=\lambda_{\text{iso}}=0$ (Appendix~\ref{app:loss_ablation}).
+Read each protocol as its own set of numbers: Table~\ref{tab:multiseed} is the 3-seed aggregate; the appendix tables are single-seed rows.
+\GKE{} $R_{\text{norm}}=1$ is architectural; bond/angle/torsion remain decoded $t=0$ scores (and iso-trained for bonds). Ablation tables additionally report decoded $R_{\text{edge}}$ (Appendix~\ref{app:loss_ablation}).
+
+\begin{table}[htbp]
+\centering
+\caption{3-seed aggregate over seeds $\{42, 1337, 2026\}$ (springs MSE uses sample std; other $\pm$ are population std). Bond/angle/torsion = mean absolute drift from each trajectory's own decoded frame at $t=0$.}
+\label{tab:multiseed}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{llrrrr}
+\toprule
+\textbf{System} & \textbf{Model} & \textbf{MSE} & \textbf{Bond (\AA)} & \textbf{Angle ($^\circ$)} & \textbf{Torsion ($^\circ$)} \\
+\midrule
+\multirow{3}{*}{aspirin}
+ & Flat Koopman & 0.0715 $\pm$ 0.0081 & 0.0816 $\pm$ 0.0038 & 4.5489 $\pm$ 0.4463 & 5.3816 $\pm$ 0.3172 \\
+ & Graph Koopman & 0.2411 $\pm$ 0.0028 & 0.0045 $\pm$ 0.0042 & 0.0908 $\pm$ 0.0195 & 0.1478 $\pm$ 0.0573 \\
+ & Graph GRU & 0.1388 $\pm$ 0.0307 & 0.0689 $\pm$ 0.0115 & 5.4895 $\pm$ 1.1282 & 6.4159 $\pm$ 0.6217 \\
+\midrule
+\multirow{3}{*}{malonaldehyde}
+ & Flat Koopman & 0.4002 $\pm$ 0.0027 & 0.1699 $\pm$ 0.0220 & 10.5136 $\pm$ 1.2920 & 16.7259 $\pm$ 1.2779 \\
+ & Graph Koopman & 0.9151 $\pm$ 0.0482 & 0.0905 $\pm$ 0.0303 & 0.4606 $\pm$ 0.3406 & 0.8284 $\pm$ 0.3951 \\
+ & Graph GRU & 0.3532 $\pm$ 0.0049 & 0.0981 $\pm$ 0.0053 & 3.7225 $\pm$ 0.6630 & 4.1948 $\pm$ 1.3642 \\
+\midrule
+\multirow{3}{*}{at-at}
+ & Flat Koopman & 3.6341 $\pm$ 1.0408 & 0.4499 $\pm$ 0.1461 & 37.1400 $\pm$ 9.7360 & 48.2050 $\pm$ 11.1981 \\
+ & Graph Koopman & 6.2917 $\pm$ 0.5139 & 0.0240 $\pm$ 0.0097 & 0.6270 $\pm$ 0.2627 & 1.1524 $\pm$ 0.4824 \\
+ & Graph GRU & 2.6390 $\pm$ 0.1575 & 0.2514 $\pm$ 0.0379 & 17.9786 $\pm$ 1.9597 & 26.3741 $\pm$ 3.1289 \\
+\midrule
+\multirow{3}{*}{springs}
+ & Flat Koopman & 0.1762 $\pm$ 0.0011 & 0.1075 $\pm$ 0.0255 & 14.5514 $\pm$ 2.8748 & 29.3838 $\pm$ 5.5636 \\
+ & Graph Koopman & 0.1768 $\pm$ 0.0030 & 0.0248 $\pm$ 0.0092 & 2.5892 $\pm$ 1.0129 & 6.0530 $\pm$ 1.7870 \\
+ & Graph GRU & 0.0455 $\pm$ 0.0185 & 0.6167 $\pm$ 0.0131 & 46.5105 $\pm$ 0.8687 & 80.2149 $\pm$ 0.9485 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+\subsection{Ablation: Structural Graph Encoding vs. Flat Representations}
+\label{sec:ablation}
+
+This experiment evaluates whether the orthogonal latent cell still needs a graph encoder. Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22} compare \GKE{} against \FKoop{} (MLP + matrix exponential). \FKoop{} also uses an orthogonal Koopman step but \emph{drops} $\mathcal{L}_{\text{iso}}$.
+
+On aspirin, \GKE{} has lower $t=0$ bond/angle drift than \FKoop{} at far fewer parameters (230K vs.\ 2.86M). That is complementary encoder structure plus iso, not ``orthogonality alone.''
+
+\subsection{Equivariant Simulation: E-GKN vs. EGNN}
+\label{sec:egkn_results}
+
+We evaluate whether adding Kronecker $\K_{\text{global}}$ on invariant features changes EGNN rollout MSE. Table~\ref{tab:egkn} reports rollout MSE at fixed horizon $k=29$ under the stated protocol.
+
+\begin{table}[htbp]
+\centering
+\caption{Rollout MSE at fixed horizon $k=29$ under the stated protocol.}
+\label{tab:egkn}
+\begin{tabular}{lrr}
+\toprule
+\textbf{System} & \textbf{EGNN MSE} & \textbf{E-GKN MSE} \\
+\midrule
+Salicylic (MD17) & $1.97\times 10^{-4}$ & $5.16\times 10^{-6}$ \\
+DHA (MD22) & $4.40\times 10^{-2}$ & $8.72\times 10^{-4}$ \\
+AT-AT (MD22) & $9.18\times 10^{-2}$ & $2.55\times 10^{-4}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\EGKN{} has 1--3 orders of magnitude lower rollout MSE on DHA and AT-AT than \EGNN{} in Table~\ref{tab:egkn} at fixed $k=29$ (DHA \EGNN{} $4.40\times 10^{-2}$). That clipped-horizon cell is \emph{not} the unbounded autoregressive blow-up: unconstrained \EGNN{} MSE reaches $\sim 4.9 \times 10^{27}$ on DHA (then NaN). \EGNN{} also diverges on 4 of 14 systems (NaN on toluene and charged $N$-body; overflow then NaN on DHA / \texttt{ac-ala3-nhme}), with unconstrained latent-norm ratio $109.5\times$ on \texttt{ac-ala3-nhme}. A finite $k=29$ \EGNN{} checkpoint can still hide later overflow. \EGKN{} stays finite on the reported 14-system protocol. That is bounded latent features plus the EGNN decoder, not conserved physical energy.
+
+\subsection{Case Studies: Dissecting the MSE Paradox}
+\label{sec:mse_paradox}
+
+\paragraph{$N$-body springs.} On springs (Table~\ref{tab:multiseed}), \GGRU{} has lower rollout MSE ($0.0455 \pm 0.0185$; individual runs reaching $2.63\times10^{-2}$) than \GKE{} ($0.1768 \pm 0.0030$), with 3-seed latent-norm ratio $2.16\times$. Structural quotes are the same 3-seed cells: bond $0.6167\pm 0.0131$\,\AA, angle $46.5105\pm 0.8687^\circ$, torsion $80.2149\pm 0.9485^\circ$ (decoded $t=0$ drift). That is the MSE-versus-topology diagnostic: MSE can reward near-uniform expansion.
+
+\paragraph{MD22 AT-AT.} \GGRU{} $R_{\text{norm}}$ contracts ($0.63\times$); unconstrained \EGNN{} expands ($5.83\times$). \GKE{}/\EGKN{} keep latent $R_{\text{norm}}=1$ by the $SO(n)$ parameterization. Decoded $t=0$ topology scores remain empirical (Limitation~1).
+
+\subsection{Comparison with SEGNO}
+
+SEGNO represents one of the strongest equivariant architectures for molecular dynamics prediction, making it an informative baseline for evaluating whether the proposed Koopman transition provides benefits beyond expressive message passing. Unlike E-GKN, however, SEGNO evolves latent representations through unconstrained iterative message-passing updates, whereas E-GKN constrains the temporal evolution through a matrix-exponential Koopman operator.
+
+\paragraph{One-step prediction}
+Table~\ref{tab:segno_r2} compares one-step validation performance on the MD22 benchmark. Both methods achieve near-saturated validation accuracy across all molecules, with validation $R^2$ exceeding $0.99$. Depending on the molecular system, either SEGNO or E-GKN attains the highest score, and the differences remain small.
+
+These results indicate that introducing the Koopman transition does not reduce short-horizon predictive accuracy, despite imposing additional structure on the latent dynamics.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{lrr}
+\toprule
+\textbf{Molecule} & \textbf{SEGNO} & \textbf{E-GKN} \\
+\midrule
+stachyose & \textbf{0.9973} & 0.9971 \\
+ac-ala3-nhme & 0.9950 & \textbf{0.9971} \\
+dha & 0.9971 & \textbf{0.9979} \\
+at-at & \textbf{0.9986} & 0.9981 \\
+\bottomrule
+\end{tabular}
+\caption{Validation $R^2$ scores for SEGNO vs.\ E-GKN across evaluated MD22 molecules. Both models achieve near-saturated one-step prediction accuracy.}
+\label{tab:segno_r2}
+\end{table}
+
+\paragraph{Long-horizon rollouts}
+While both models demonstrate comparable one-step prediction accuracy (Table~\ref{tab:segno_r2}), their behaviors over extended autoregressive rollouts offer critical insights.
+
+SEGNO was evaluated with \texttt{norm\_diff} enabled and bond-distance edge features populated --- the configuration under which SEGNO is designed to control long-horizon rollout error. Under this stabilized configuration, SEGNO successfully avoids catastrophic divergence, maintaining finite and numerically stable rollouts across the full 29-step horizon for all four MD22 systems. On stachyose and ac-ala3-nhme, SEGNO closely tracks E-GKN across the entire rollout horizon, with comparable final MSEs at step 29 (e.g., $0.255$ vs $0.259$ on stachyose). However, on DHA and AT-AT, while remaining numerically stable, SEGNO's rollout error accumulates slightly faster than E-GKN's over longer horizons (e.g., reaching an MSE of $0.627$ vs E-GKN's $0.595$ at step 29 on DHA).
+
+This indicates that SEGNO's structural stabilization keeps rollouts finite; E-GKN's $SO(n)$ latent cell is a different inductive bias, with similar or slightly lower MSE on some MD22 molecules in this protocol --- not a physical-energy win.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.42\textwidth]{figures/dynamics_tradeoff_dha_egkn_vs_segno.png}
+    \caption{E-GKN vs.\ SEGNO on MD22 DHA over 29 rollout steps. Top: rollout MSE. Lower panels: decoded pairwise coordinate-distance and latent node-embedding-distance ratios relative to $t=0$. SEGNO has slightly higher coordinate-distance retention here; E-GKN has lower MSE and $\rho(K)=1$ on invariant features by construction.}
+    \label{fig:segno_rollout}
+\end{figure}
+
+\paragraph{Latent dynamics}
+To better understand this behavior, we analyze the learned latent dynamics.
+
+Unlike SEGNO, E-GKN explicitly parameterizes the latent evolution as
+\begin{equation}
+K = \exp(A_{\text{skew}})
+\end{equation}
+(with implicit $\Delta t=1$), which guarantees $K \in SO(n)$ on those latent channels, so latent Euclidean norm and latent volume are preserved. Eigenvalues of $K$ lie on the unit circle ($\rho(K)=1$). That is a latent-cell fact, not ``stable physics'' in observation space (Remark~\ref{cor:liouville}).
+
+\paragraph{Representation stability}
+We next evaluate whether repeated rollout preserves the learned latent representation versus decoded pairwise geometry. Given decoded node coordinates $\hat{\mathbf{X}}(t) \in \R^{N \times 3}$ and latent features $\mathbf{H}(t) \in \R^{N \times d}$, let $D_X(t) \in \R^{N \times N}$ and $D_H(t) \in \R^{N \times N}$ denote the pairwise Euclidean distance matrices where $[D_X(t)]_{ij} = \|\hat{\mathbf{x}}_i(t) - \hat{\mathbf{x}}_j(t)\|_2$ and $[D_H(t)]_{ij} = \|\mathbf{h}_i(t) - \mathbf{h}_j(t)\|_2$. The decoded coordinate retention and latent collapse metrics are formally defined as:
+\begin{equation}
+  \label{eq:retention_collapse}
+  \text{Coord Retention}(T) = \frac{\|D_X(T)\|_F}{\|D_X(0)\|_F}, \qquad
+  \text{Latent Collapse}(T) = 1 - \frac{\|D_H(T)\|_F}{\|D_H(0)\|_F}.
+\end{equation}
+When a model suffers from representation contraction, $\frac{\|D_H(T)\|_F}{\|D_H(0)\|_F} \to 0$, producing high latent collapse scores.
+
+Across the evaluated MD22 systems, E-GKN consistently exhibits lower latent collapse than SEGNO (Table~\ref{tab:segno_collapse}). This observation is consistent with the orthogonality constraint imposed by the Koopman transition, which prevents artificial contraction or expansion of the latent manifold during iterative propagation.
+
+Interestingly, lower latent collapse does not always mean better decoded geometry. Coordinate retention is mixed; SEGNO's steerable decoder can win pairwise-distance retention while E-GKN bounds latent drift. Decoded topology is empirical (Limitation~1).
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{lrr|rr}
+\toprule
+\multirow{2}{*}{\textbf{Molecule}} & \multicolumn{2}{c|}{\textbf{Latent Collapse} $\downarrow$} & \multicolumn{2}{c}{\textbf{Coord Retention} $\uparrow$} \\
+ & \textbf{SEGNO} & \textbf{E-GKN} & \textbf{SEGNO} & \textbf{E-GKN} \\
+\midrule
+stachyose & 0.0699 & \textbf{0.0540} & \textbf{0.9780} & 0.9749 \\
+ac-ala3-nhme & 0.0916 & \textbf{0.0546} & \textbf{0.9714} & 0.9560 \\
+dha & 0.0712 & \textbf{0.0467} & \textbf{0.9817} & 0.9699 \\
+at-at & 0.0465 & \textbf{0.0438} & 0.9803 & \textbf{0.9870} \\
+\bottomrule
+\end{tabular}
+\caption{Decoded pairwise distance ratios relative to $t=0$ after full rollout, for SEGNO vs.\ E-GKN (latent pairwise-distance collapse and decoded coordinate-distance retention).}
+\label{tab:segno_collapse}
+\end{table}
+
+These results are a complementary tradeoff: SEGNO is strong on short-horizon MD22 $R^2$ and often on coordinate retention; E-GKN adds an $SO(n)$ latent cell that bounds latent norm/volume by construction. Long-horizon MSE on the reported molecules is an empirical protocol result.
+
+
+% ============================================================
+\section{Discussion}
+\label{sec:discussion}
+% ============================================================
+
+\paragraph{Role of the $SO(n)$ latent cell.}
+A failure mode in these rollouts is unconstrained latent-norm drift: the decoder then maps shifted latents to stretched or collapsed coordinates. An orthogonal cell bounds \emph{latent} norms (Theorem~\ref{thm:so_n}); decoded bond/angle/torsion remain empirical (Limitation~1), and $\mathcal{L}_{\text{iso}}$ also trains bonded distances.
+
+\paragraph{Limitations of MSE.}
+Point-wise rollout MSE is insensitive to relational geometry. Section~\ref{sec:mse_paradox} shows low MSE via expansion or centroid collapse with large $t=0$ bond/angle drift. Topology scores here are drift from decoded $t=0$, not vs.\ GT.
+
+\paragraph{Linear latent step.}
+A linear orthogonal step on concatenated node embeddings (Kronecker $\K_{\text{glob}}$, not a pooled graph vector and not a dense $Nd\times Nd$ matrix) can reduce those $t=0$-drift scores relative to a GRU cell, at a typical MSE cost.
+
+\paragraph{Optimization and further limitations.}
+Both \GKE{} and \EGKN{} often reach peak validation $R^2$ within 1--5 epochs; recurrent baselines may need more. Limitations~1--2 sit after Theorem~\ref{thm:so_n}. Additionally:
+\begin{enumerate}
+  \item \textbf{Reported architecture is Kronecker $\K_{\text{glob}}$.} Node embeddings are concatenated, not pooled. E-GKN uses the same shared Kronecker operator on invariant channels, not independent per-node cells. A legacy node-wise $64\times 64$ cell in the repository is not the reported model.
+  \item \textbf{G-GRU stabilizers and RDFs.} Appendix~\ref{app:gru_stabilizers} tests longer pushforward and latent noise on \GGRU{} (no symplectic integrators): under the full loss, they do not close the $t=0$ bond/angle/torsion gap to \GKE{} on MD17/MD22. Appendix~\ref{app:rdf_pilot}: absolute RDF often favors \GGRU{}; horizon $\Delta$L1 more often favors \GKE{}.
+\end{enumerate}
+
+% ============================================================
+\section{Conclusion}
+\label{sec:conclusion}
+% ============================================================
+
+An orthogonal Koopman cell $\K=\exp(\Ask)\in SO(n)$ (implicit $\Delta t=1$) bounds \emph{latent} norm and volume. That is an inductive bias on the temporal map, not energy conservation, Liouville mechanics, or decoded-bond preservation by construction (Remark~\ref{cor:liouville}). Across 14 systems we observe an MSE-versus-topology tradeoff: lower decoded-$t=0$ bond/angle/torsion drift versus \GGRU{}, often with higher pointwise MSE. Bonded margins also see $\mathcal{L}_{\text{iso}}$. We do not claim identical-objective baselines or a 14-system physical-energy result. Evaluation beyond MSE remains necessary; the topology scores in this paper are $t=0$ drift, not vs.\ GT.
+
+% ============================================================
+\begin{thebibliography}{10}
+
+\bibitem{koopman1931hamiltonian}
+B.~O. Koopman, ``Hamiltonian systems and transformation in {H}ilbert space,''
+  \emph{Proceedings of the National Academy of Sciences}, vol.~17, no.~5, pp.
+  315--318, 1931.
+
+\bibitem{lusch2018deep}
+B.~Lusch, J.~N. Kutz, and S.~L. Brunton, ``Deep learning for universal linear
+  embeddings of nonlinear dynamics,'' \emph{Nature Communications}, vol.~9,
+  no.~1, p. 4950, 2018.
+
+\bibitem{otto2019linearly}
+S.~E. Otto and C.~W. Rowley, ``Linearly recurrent autoencoder networks for
+  learning dynamics,'' \emph{SIAM Journal on Applied Dynamical Systems},
+  vol.~18, no.~1, pp. 558--593, 2019.
+
+\bibitem{morton2018deep}
+J.~Morton, A.~Jameson, M.~J. Kochenderfer, and F.~Witherden, ``Deep dynamical
+  modeling and control of unsteady fluid flows,'' \emph{Advances in Neural
+  Information Processing Systems}, vol.~31, 2018.
+
+\bibitem{brunton2016discovering}
+S.~L. Brunton, J.~L. Proctor, and J.~N. Kutz, ``Discovering governing equations
+  from data by sparse identification of nonlinear dynamical systems,''
+  \emph{Proceedings of the National Academy of Sciences}, vol.~113, no.~15, pp.
+  3932--3937, 2016.
+
+\bibitem{satorras2021n}
+V.~G. Satorras, E.~Hoogeboom, and M.~Welling, ``{$E(n)$} equivariant graph
+  neural networks,'' \emph{International Conference on Machine Learning}, 2021.
+
+\bibitem{batzner2022nequip}
+S.~Batzner, A.~Musaelian, L.~Sun, M.~Geiger, J.~P. Mailoa, M.~Kornbluth,
+  N.~Molinari, T.~E. Smidt, and B.~Kozinsky, ``E(3)-equivariant graph neural
+  networks for data-efficient and accurate interatomic potentials,''
+  \emph{Nature Communications}, vol.~13, no.~1, p. 2453, 2022.
+
+\bibitem{klicpera2020directional}
+J.~Klicpera, J.~Gro{\ss}, and S.~G{\"u}nnemann, ``Directional message passing
+  for molecular graphs,'' \emph{International Conference on Learning
+  Representations}, 2020.
+
+\bibitem{schutt2021equivariant}
+K.~Sch{\"u}tt, O.~Unke, and M.~Gastegger, ``Equivariant message passing for the
+  prediction of tensorial properties and molecular spectra,''
+  \emph{International Conference on Machine Learning}, 2021.
+
+\bibitem{chmiela2017machine}
+S.~Chmiela, A.~Tkatchenko, H.~E. Sauceda, I.~Poltavsky, K.~T. Sch{\"u}tt, and
+  K.-R. M{\"u}ller, ``Machine learning of accurate energy-conserving molecular
+  force fields,'' \emph{Science Advances}, vol.~3, no.~5, p. e1603015, 2017.
+
+\bibitem{chmiela2023accurate}
+S.~Chmiela, V.~Vassilev-Galindo, O.~T. Unke, A.~Kabylda, H.~E. Sauceda,
+  A.~Tkatchenko, and K.-R. M{\"u}ller, ``Accurate global machine learning force
+  fields for molecules with hundreds of atoms,'' \emph{Science Advances},
+  vol.~9, no.~2, p. eadf0873, 2023.
+
+\bibitem{greydanus2019hamiltonian}
+S.~Greydanus, M.~Dzamba, and J.~Yosinski, ``Hamiltonian neural networks,''
+  \emph{Advances in Neural Information Processing Systems}, vol.~32, 2019.
+
+\bibitem{cranmer2020lagrangian}
+M.~Cranmer, S.~Greydanus, S.~Hoyer, P.~Battaglia, D.~Spergel, and S.~Ho,
+  ``Lagrangian neural networks,'' \emph{ICLR 2020 Deep Differential Equations
+  Workshop}, 2020.
+
+\bibitem{azencot2020forecasting}
+O.~Azencot, N.~B. Erichson, V.~Lin, and M.~Mahoney, ``Forecasting sequential
+  data using consistent {K}oopman autoencoders,'' \emph{International Conference
+  on Machine Learning}, 2020.
+
+\bibitem{bronstein2021geometric}
+M.~M. Bronstein, J.~Bruna, T.~Cohen, and P.~Veli{\v{c}}kovi{\'c}, ``Geometric
+  deep learning: Grids, groups, graphs, geodesics, and gauges,'' \emph{arXiv
+  preprint arXiv:2104.13478}, 2021.
+
+\bibitem{liu2023segno}
+Y.~Liu, L.~Zhao, W.~Ji, and X.~Li, ``SEGNO: Generalizing equivariant graph
+  neural networks with physical inductive biases,'' \emph{arXiv preprint}, 2023.
+
+\bibitem{wang2023gamd}
+W.~Wang, S.~Axelrod, and R.~G{\'o}mez-Bombarelli, ``Generalizable machine
+  learning force fields for {MD} simulations,'' \emph{arXiv preprint}, 2023.
+
+\bibitem{fu2023simulate}
+X.~Fu, T.~Xie, N.~J. Rebello, B.~D. Olsen, and T.~Jaakkola, ``Simulate
+  time-integrated coarse-grained molecular dynamics with geometric machine
+  learning,'' \emph{arXiv preprint}, 2023.
+
+\bibitem{arjovsky2016unitary}
+M.~Arjovsky, A.~Shah, and Y.~Bengio, ``Unitary recurrent neural networks,'' \emph{International Conference on Machine Learning}, pp. 1120--1128, 2016.
+
+\bibitem{helfrich2018orthogonal}
+E.~Helfrich, D.~Willmott, and Q.~Ye, ``Orthogonal recurrent neural networks with scaled {C}ayley transform,'' \emph{International Conference on Machine Learning}, pp. 1969--1978, 2018.
+
+\end{thebibliography}
+% ============================================================
+
+% ============================================================
+\appendix
+\clearpage
+
+\begin{center}
+  \LARGE \textbf{Appendices}
+\end{center}
+\vspace{1em}
+% ============================================================
+
+\section{Spectral Radius of E-GKN}
+\label{app:egkn_rho}
+
+The standard evaluation metric $\rho(\K_{\text{global}})$ reports the spectral radius of a global linear Koopman matrix. In \EGKN{}, the Koopman transition $\K_{\text{global}} = \exp(\mathbf{I}_N \otimes \Ask^{\text{self}} + \alpha \cdot \mathbf{P}_{\text{sym}} \otimes \Ask^{\text{edge}})$ acts strictly on the invariant feature channels $\mathbf{h} \in \R^{N(d-3)}$, while 3D coordinates $\x$ are updated through an $SE(3)$-equivariant GNN layer (Section~\ref{sec:egkn}). Because coordinate evolution involves non-linear message passing, a single global matrix operating on full coordinate space is not instantiated. Consequently, the global linear spectral radius metric $\rho(\K)$ is architecturally undefined for \EGKN{}'s coordinate updates, even though the feature-space Koopman operator itself is strictly orthogonal with unit spectral radius ($\rho = 1.0$) by construction (Theorem~\ref{thm:so_n}).
+
+\section{Full Per-System Results}
+\label{app:full_results}
+
+We report parameter counts and rollout metrics for Flat Koopman, Graph Koopman, and Graph GRU across 14 systems. Table~\ref{tab:app_params} is parameter scaling. Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22} are single-seed appendix sweep cells (not the 3-seed means in Table~\ref{tab:multiseed}). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lrrr}
+\toprule
+\textbf{System} & \textbf{Flat Koopman} & \textbf{Graph Koopman} & \textbf{Graph GRU} \\
+\midrule
+aspirin & 2,858,239 & 230,528 & 251,392 \\
+benzene & 1,255,204 & 153,317 & 174,181 \\
+ethanol & 868,315 & 127,580 & 148,444 \\
+malonaldehyde & 868,315 & 127,580 & 148,444 \\
+naphthalene & 2,250,166 & 204,791 & 225,655 \\
+salicylic & 1,885,744 & 187,633 & 208,497 \\
+toluene & 1,715,821 & 179,054 & 199,918 \\
+uracil & 1,255,204 & 153,317 & 174,181 \\
+stachyose & 34,889,029 & 796,742 & 817,606 \\
+ac-ala3-nhme & 9,179,134 & 410,687 & 431,551 \\
+dha & 15,400,104 & 530,793 & 551,657 \\
+at-at & 17,472,436 & 565,109 & 585,973 \\
+n-body (charged) & 467,151 & 93,264 & 114,128 \\
+n-body (springs) & 467,151 & 93,264 & 114,128 \\
+\bottomrule
+\end{tabular}
+\caption{Parameter scaling across all evaluated dynamical systems.}
+\label{tab:app_params}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Single-seed appendix sweep on MD17 (Flat Koopman vs Graph Koopman vs Graph GRU; one seed per system). Bond/angle/torsion = mean absolute drift from each trajectory's own decoded frame at $t=0$. Table~\ref{tab:multiseed} reports 3-seed means separately.}
+\label{tab:app_results_md17}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{llrrrrr}
+\toprule
+\textbf{System} & \textbf{Model} & \textbf{MSE} & \textbf{Bond (\AA)} & \textbf{Angle ($^\circ$)} & \textbf{Torsion ($^\circ$)} & \textbf{Latent $R_{\text{norm}}$} \\
+\midrule
+\multirow{3}{*}{aspirin} & Flat Koopman & 0.0614 & 0.0793 & 4.2965 & 4.6356 & 0.9999 \\
+ & Graph Koopman & 0.2350 & 0.0070 & 0.0992 & 0.2210 & 1.0000 \\
+ & Graph GRU & 0.1214 & 0.0608 & 5.6556 & 6.4670 & 0.9036 \\
+\midrule
+\multirow{3}{*}{benzene} & Flat Koopman & 0.1011 & 0.1502 & 7.4919 & 5.8504 & 1.0000 \\
+ & Graph Koopman & 0.8057 & 0.0057 & 0.3491 & 0.5377 & 1.0000 \\
+ & Graph GRU & 0.0401 & 0.0803 & 3.6982 & 2.2197 & 0.7280 \\
+\midrule
+\multirow{3}{*}{ethanol} & Flat Koopman & 0.2016 & 0.1849 & 11.3877 & 15.1583 & 1.0000 \\
+ & Graph Koopman & 0.5810 & 0.0462 & 0.4722 & 0.4280 & 1.0000 \\
+ & Graph GRU & 0.1555 & 0.0922 & 3.8021 & 2.5854 & 0.8419 \\
+\midrule
+\multirow{3}{*}{malonaldehyde} & Flat Koopman & 0.3849 & 0.1488 & 8.9481 & 15.7820 & 1.0000 \\
+ & Graph Koopman & 0.7545 & 0.0713 & 0.3029 & 0.5664 & 1.0000 \\
+ & Graph GRU & 0.3663 & 0.0595 & 2.9423 & 4.3160 & 0.9285 \\
+\midrule
+\multirow{3}{*}{naphthalene} & Flat Koopman & 0.0153 & 0.0655 & 1.2827 & 1.8633 & 0.9998 \\
+ & Graph Koopman & 0.0176 & 0.0082 & 0.1118 & 0.1587 & 1.0000 \\
+ & Graph GRU & 0.0103 & 0.0514 & 0.7937 & 1.4631 & 0.8766 \\
+\midrule
+\multirow{3}{*}{salicylic} & Flat Koopman & 0.0353 & 0.0516 & 2.0217 & 3.1501 & 0.9998 \\
+ & Graph Koopman & 0.7111 & 0.0117 & 0.3196 & 0.7558 & 1.0000 \\
+ & Graph GRU & 0.0202 & 0.0218 & 1.2715 & 1.0959 & 0.9580 \\
+\midrule
+\multirow{3}{*}{toluene} & Flat Koopman & 0.1472 & 0.1515 & 6.6289 & 8.8714 & 0.9999 \\
+ & Graph Koopman & 0.6270 & 0.0171 & 0.6696 & 1.5430 & 1.0000 \\
+ & Graph GRU & 0.1050 & 0.0415 & 1.6042 & 2.3985 & 0.8988 \\
+\midrule
+\multirow{3}{*}{uracil} & Flat Koopman & 0.0452 & 0.1684 & 3.7764 & 4.1588 & 1.0000 \\
+ & Graph Koopman & 0.4327 & 0.0046 & 0.1494 & 0.2858 & 1.0000 \\
+ & Graph GRU & 0.0179 & 0.0482 & 1.3092 & 1.3362 & 0.8651 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Single-seed appendix sweep on MD22 and N-body (Flat Koopman vs Graph Koopman vs Graph GRU; one seed per system). Bond/angle/torsion = mean absolute drift from each trajectory's own decoded frame at $t=0$. Springs \GGRU{} latent $R_{\text{norm}}=1.9794$ is that single-seed value; Table~\ref{tab:multiseed} reports 3-seed means separately.}
+\label{tab:app_results_md22}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{llrrrrr}
+\toprule
+\textbf{System} & \textbf{Model} & \textbf{MSE} & \textbf{Bond (\AA)} & \textbf{Angle ($^\circ$)} & \textbf{Torsion ($^\circ$)} & \textbf{Latent $R_{\text{norm}}$} \\
+\midrule
+\multirow{3}{*}{stachyose} & Flat Koopman & 5.0692 & 0.4611 & 48.0266 & 53.0592 & 0.9610 \\
+ & Graph Koopman & 1.9520 & 0.0133 & 0.7405 & 1.2178 & 1.0000 \\
+ & Graph GRU & 1.2673 & 0.1465 & 11.4753 & 14.3737 & 0.9312 \\
+\midrule
+\multirow{3}{*}{ac-ala3-nhme} & Flat Koopman & 1.2724 & 0.3109 & 27.6694 & 39.7177 & 0.9977 \\
+ & Graph Koopman & 1.9273 & 0.0301 & 1.0744 & 2.3260 & 1.0000 \\
+ & Graph GRU & 0.4012 & 0.0989 & 5.5239 & 8.7518 & 0.8989 \\
+\midrule
+\multirow{3}{*}{dha} & Flat Koopman & 4.0158 & 0.4839 & 44.3382 & 58.0033 & 0.9753 \\
+ & Graph Koopman & 3.9058 & 0.1024 & 1.0102 & 2.0399 & 1.0000 \\
+ & Graph GRU & 1.1227 & 0.1137 & 7.4557 & 15.2040 & 0.8485 \\
+\midrule
+\multirow{3}{*}{at-at} & Flat Koopman & 1.8776 & 0.2880 & 28.6583 & 41.0566 & 0.9709 \\
+ & Graph Koopman & 7.6751 & 0.0295 & 0.3275 & 0.5732 & 1.0000 \\
+ & Graph GRU & 3.2551 & 0.3740 & 24.9426 & 34.4856 & 0.6333 \\
+\midrule
+\multirow{3}{*}{n-body (charged)} & Flat Koopman & 2.1350 & 0.3613 & 23.3443 & 45.2536 & 1.0000 \\
+ & Graph Koopman & 2.0397 & 0.0346 & 2.1319 & 5.9977 & 1.0000 \\
+ & Graph GRU & 2.0120 & 0.0928 & 4.5293 & 10.6446 & 1.4001 \\
+\midrule
+\multirow{3}{*}{n-body (springs)} & Flat Koopman & 0.1709 & 0.1015 & 13.2142 & 27.6922 & 1.0000 \\
+ & Graph Koopman & 0.1788 & 0.0182 & 2.0582 & 5.4004 & 1.0000 \\
+ & Graph GRU & 0.0256 & 0.5711 & 45.1807 & 79.2633 & 1.9794 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+
+\clearpage
+\section{Training Hyperparameters \& Computational Budget}
+\label{app:hyperparams}
+
+\paragraph{Hyperparameter Tuning Protocol.}
+To avoid combinatorial compute overhead across all 14 datasets, hyperparameters were selected on representative systems (aspirin, DHA) from the ranges below. Table~\ref{tab:hyperparams_summary} lists the settings used for the reported numbers:
+\begin{itemize}[leftmargin=1.5em,itemsep=1pt,topsep=1pt]
+  \item Initial learning rate: $\{1\times 10^{-4}, 5\times 10^{-4}, 1\times 10^{-3}, 2\times 10^{-3}\}$. The run uses constant $\mathrm{lr}=10^{-3}$ with \textbf{AdamW} (weight decay $10^{-4}$); \textbf{no cosine schedule}.
+  \item Hidden feature dimension $d$: $\{32, 64, 128\}$ (selected $64$).
+  \item Message-passing layers: $\{2, 4, 6\}$. The reported \GKE{}/\GGRU{} encoder is \textbf{2 MPNN layers} (edge-conditioned).
+  \item Batch size: $\{16, 32, 64\}$. Reported runs use 16, or 32 for some MD17/$N$-body jobs and 16 for MD22.
+  \item Multi-task loss weights: $\lambda_{\text{recon}} \in \{5.0, 10.0, 20.0\}$, $\lambda_{\text{dyn}} \in \{0.5, 1.0, 2.0\}$, $\lambda_{\text{collapse}} \in \{1.0, 2.0, 5.0\}$, $\lambda_{\text{iso}} \in \{2.0, 5.0, 10.0\}$ (selected $10/1/2/5$, fixed; no annealed $\lambda$).
+\end{itemize}
+Once selected, the configuration in Table~\ref{tab:hyperparams_summary} was held fixed. Baseline loss asymmetries (Section~\ref{sec:experiments}) still apply.
+
+\begin{table}[htbp]
+\centering
+\caption{Training hyperparameters of the reported runs (constant learning rate, 2-layer encoder). Bond/angle/torsion eval is decoded $t=0$ drift.}
+\label{tab:hyperparams_summary}
+\begin{tabular}{ll}
+  \toprule
+  Hyperparameter & Reported run \\
+  \midrule
+  Optimizer & AdamW ($\beta_1=0.9, \beta_2=0.999$), weight decay $10^{-4}$ \\
+  Learning rate & $1\times 10^{-3}$ (constant; \textbf{no cosine}) \\
+  Batch size & 16, or 32 for some MD17/$N$-body runs / 16 for MD22 \\
+  Training epochs & 100 \\
+  Latent dimension $d$ & 64 \\
+  \GKE{}/\GGRU{} MPNN layers & 2 \\
+  \GGRU{} dyn unroll & 4 steps (single-step $\mathcal{L}_{\text{dyn}}$ for \GKE{}) \\
+  Loss weights $(\lambda_{\text{recon}}, \lambda_{\text{dyn}}, \lambda_{\text{collapse}}, \lambda_{\text{iso}})$ & $(10.0, 1.0, 2.0, 5.0)$ (fixed) \\
+  Evaluation horizon & 29 rollout steps \\
+  Random seeds & $\{42, 1337, 2026\}$ \\
+  \bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Computational Hardware and Training Efficiency.}
+All models were implemented in PyTorch and PyTorch Geometric, and trained on hardware consisting of NVIDIA A100 (80GB) and NVIDIA RTX 3090 (24GB) GPUs. Training throughput is highly efficient: a 100-epoch training run requires $\approx 3\text{--}5$ minutes for small MD17 molecules and $N$-body systems, and $\approx 15\text{--}35$ minutes for larger MD22 macromolecules (such as \texttt{stachyose}, 87 atoms). Evaluation rollouts and $t=0$-drift metric extraction require less than 2 minutes per trajectory.
+
+\section{Loss Ablation: Removing $\mathcal{L}_{\text{collapse}}$ and $\mathcal{L}_{\text{iso}}$}
+\label{app:loss_ablation}
+
+Eq.~\eqref{eq:total_loss} includes an anti-collapse hinge $\mathcal{L}_{\text{collapse}}$ and a bonded isometric penalty $\mathcal{L}_{\text{iso}}$.
+To test whether reported structural metrics depend on these two terms, we retrain \GKE{} and \GGRU{} under
+\begin{equation}
+  \label{eq:noreg_loss}
+  \mathcal{L}_{\text{noreg}} = 10.0\,\mathcal{L}_{\text{recon}} + 1.0\,\mathcal{L}_{\text{dyn}},
+\end{equation}
+i.e., $\lambda_{\text{collapse}}=\lambda_{\text{iso}}=0$, keeping all other hyperparameters fixed (Table~\ref{tab:hyperparams_summary}).
+We first compare \emph{full} vs.\ \emph{noreg} on MD17 aspirin (Table~\ref{tab:loss_ablation_aspirin}), then evaluate \emph{noreg} on MD17 malonaldehyde, benzene, and ethanol, and MD22 dha and at-at (Table~\ref{tab:loss_ablation_expand}).
+All entries are mean $\pm$ sample std over seeds $\{42, 1337, 2026\}$ at a 29-step horizon (the full-loss aspirin row matches Table~\ref{tab:multiseed}; auxiliary-loss ablated when $\lambda_{\text{collapse}}=\lambda_{\text{iso}}=0$).
+This ablation does not include $N$-body systems.
+
+\paragraph{Aspirin (full vs.\ noreg).}
+Under the full loss, \GKE{} bond / angle / torsion drift and $|R_{\text{edge}}-1|$ are lower than under noreg (e.g., bond $0.0045\to0.0149$\,\AA; angle $0.0908\to0.3114^\circ$), so $\mathcal{L}_{\text{collapse}}$ and $\mathcal{L}_{\text{iso}}$ affect the numerical margins.
+Under noreg, $R_{\text{norm}}=1.0000$ for \GKE{} on all three seeds; seed-averaged angle drift remains lower for \GKE{} than \GGRU{}, and seed-averaged bond / torsion drift and $|R_{\text{edge}}-1|$ are also lower for \GKE{} (Table~\ref{tab:loss_ablation_aspirin}).
+Per-seed counts under noreg: lower bond drift for \GKE{} on $2/3$ seeds, lower angle drift on $3/3$, lower torsion drift on $2/3$, smaller $|R_{\text{norm}}-1|$ on $3/3$, smaller $|R_{\text{edge}}-1|$ on $2/3$.
+On seed 42, \GGRU{} has lower bond and torsion drift and smaller $|R_{\text{edge}}-1|$.
+Seed-averaged rollout MSE is lower for \GGRU{} under both settings.
+
+\begin{table}[H]
+\centering
+\caption{Aspirin loss ablation: full objective vs.\ collapse/iso off (noreg); mean $\pm$ sample std over seeds $\{42, 1337, 2026\}$. Bond/angle/torsion = mean absolute drift from each trajectory's own decoded frame at $t=0$; $R_{\text{edge}}$ is the ablation decoded-edge metric (bonded-distance ratio vs.\ decoded $t=0$).}
+\label{tab:loss_ablation_aspirin}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llrrrrrr}
+\toprule
+\textbf{Setting} & \textbf{Model} & \textbf{MSE} & \textbf{Bond (\AA)} & \textbf{Angle ($^\circ$)} & \textbf{Torsion ($^\circ$)} & \textbf{$R_{\text{norm}}$} & \textbf{$R_{\text{edge}}$} \\
+\midrule
+\multirow{2}{*}{full}
+ & \GKE{} & $0.2411 \pm 0.0034$ & $0.0045 \pm 0.0052$ & $0.0908 \pm 0.0239$ & $0.1478 \pm 0.0702$ & $1.0000 \pm 0.0000$ & $0.9974 \pm 0.0054$ \\
+ & \GGRU{} & $0.1386 \pm 0.0377$ & $0.0687 \pm 0.0141$ & $5.5003 \pm 1.3999$ & $6.4193 \pm 0.7660$ & $0.8212 \pm 0.0298$ & $0.9590 \pm 0.0188$ \\
+\midrule
+\multirow{2}{*}{noreg}
+ & \GKE{} & $0.2217 \pm 0.0075$ & $0.0149 \pm 0.0127$ & $0.3114 \pm 0.1008$ & $0.7312 \pm 0.3364$ & $1.0000 \pm 0.0000$ & $0.9862 \pm 0.0127$ \\
+ & \GGRU{} & $0.0616 \pm 0.0119$ & $0.0263 \pm 0.0040$ & $1.4262 \pm 0.3212$ & $1.5434 \pm 0.4457$ & $0.9406 \pm 0.0179$ & $0.9834 \pm 0.0046$ \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\paragraph{Additional molecules (noreg only).}
+Table~\ref{tab:loss_ablation_expand} reports noreg rollouts on five further systems.
+Across the $15$ seed--system pairs, \GKE{} has lower bond drift on $13/15$ seeds, lower angle drift on $14/15$, lower torsion drift on $11/15$, smaller $|R_{\text{norm}}-1|$ on $15/15$, and smaller $|R_{\text{edge}}-1|$ on $13/15$; lower MSE on $1/15$.
+Including aspirin noreg ($18$ pairs): bond $15/18$, angle $17/18$, torsion $13/18$, $|R_{\text{norm}}-1|$ $18/18$, $|R_{\text{edge}}-1|$ $15/18$.
+On benzene, seed-averaged bond drift is nearly tied ($0.0162$ vs.\ $0.0158$\,\AA) and torsion drift is lower for \GGRU{} ($0.8989$ vs.\ $0.5256^\circ$).
+Seed-averaged MSE is lower for \GGRU{} on every system in Table~\ref{tab:loss_ablation_expand}.
+
+\begin{table}[H]
+\centering
+\caption{Auxiliary-loss ablation (collapse/iso off) on additional MD17/MD22 molecules; mean $\pm$ std over seeds $\{42, 1337, 2026\}$. Bond/angle/torsion = mean absolute drift from each trajectory's own decoded frame at $t=0$; $R_{\text{edge}}$ is the ablation decoded-edge metric (bonded-distance ratio vs.\ decoded $t=0$).}
+\label{tab:loss_ablation_expand}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llrrrrrr}
+\toprule
+\textbf{System} & \textbf{Model} & \textbf{MSE} & \textbf{Bond (\AA)} & \textbf{Angle ($^\circ$)} & \textbf{Torsion ($^\circ$)} & \textbf{$R_{\text{norm}}$} & \textbf{$R_{\text{edge}}$} \\
+\midrule
+\multirow{2}{*}{malonaldehyde}
+ & \GKE{} & $0.3712 \pm 0.0180$ & $0.0153 \pm 0.0051$ & $1.3432 \pm 0.6827$ & $2.7865 \pm 1.4059$ & $1.0000 \pm 0.0000$ & $0.9797 \pm 0.0098$ \\
+ & \GGRU{} & $0.3620 \pm 0.0036$ & $0.0848 \pm 0.0091$ & $3.4357 \pm 0.1569$ & $4.8011 \pm 1.2277$ & $0.8864 \pm 0.0294$ & $0.9404 \pm 0.0073$ \\
+\midrule
+\multirow{2}{*}{benzene}
+ & \GKE{} & $0.4253 \pm 0.0133$ & $0.0162 \pm 0.0125$ & $0.5898 \pm 0.1426$ & $0.8989 \pm 0.0723$ & $1.0000 \pm 0.0000$ & $0.9922 \pm 0.0119$ \\
+ & \GGRU{} & $0.0301 \pm 0.0007$ & $0.0158 \pm 0.0046$ & $0.7052 \pm 0.2652$ & $0.5256 \pm 0.1004$ & $0.9725 \pm 0.0157$ & $0.9889 \pm 0.0042$ \\
+\midrule
+\multirow{2}{*}{ethanol}
+ & \GKE{} & $0.2356 \pm 0.0019$ & $0.0116 \pm 0.0060$ & $0.6243 \pm 0.0965$ & $2.5458 \pm 1.6843$ & $1.0000 \pm 0.0000$ & $0.9871 \pm 0.0105$ \\
+ & \GGRU{} & $0.1670 \pm 0.0019$ & $0.0841 \pm 0.0232$ & $3.1388 \pm 1.5546$ & $4.3561 \pm 2.2168$ & $0.8848 \pm 0.0343$ & $0.9306 \pm 0.0225$ \\
+\midrule
+\multirow{2}{*}{dha}
+ & \GKE{} & $3.1058 \pm 0.5412$ & $0.0396 \pm 0.0237$ & $1.5703 \pm 0.3096$ & $2.9925 \pm 1.1008$ & $1.0000 \pm 0.0000$ & $0.9620 \pm 0.0286$ \\
+ & \GGRU{} & $1.1456 \pm 0.0744$ & $0.1119 \pm 0.0305$ & $9.2232 \pm 2.6083$ & $16.0313 \pm 4.2369$ & $0.8674 \pm 0.0450$ & $0.9267 \pm 0.0288$ \\
+\midrule
+\multirow{2}{*}{at-at}
+ & \GKE{} & $6.2936 \pm 0.9977$ & $0.0482 \pm 0.0280$ & $0.8037 \pm 0.4412$ & $2.1809 \pm 1.5655$ & $1.0000 \pm 0.0000$ & $0.9664 \pm 0.0202$ \\
+ & \GGRU{} & $2.3265 \pm 0.1751$ & $0.2658 \pm 0.0958$ & $16.3134 \pm 5.3668$ & $24.5915 \pm 9.7239$ & $0.7715 \pm 0.0431$ & $0.8820 \pm 0.0531$ \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\section{G-GRU Pushforward and Training Noise}
+\label{app:gru_stabilizers}
+
+A natural question is whether the structural gap between \GKE{} and \GGRU{} can be closed by standard recurrent stabilizers rather than an $SO(n)$ transition.
+The main-text \GGRU{} baseline already trains with a 4-step latent pushforward in $\mathcal{L}_{\text{dyn}}$ and no latent noise; we denote this setting \emph{vanilla} \GGRU{} ($H{=}4$, $\sigma{=}0$).
+We retrain \GGRU{} only under the \emph{full} loss (Eq.~\eqref{eq:total_loss}), keeping existing \GKE{} full-loss checkpoints fixed, and compare three additional arms on seed~$42$:
+(i)~longer pushforward ($H{=}16$, noise~$0$; pf16);
+(ii)~noise only ($H{=}4$, Gaussian latent noise std~$\sigma{=}0.01$ before the unroll);
+(iii)~both ($H{=}16$, $\sigma{=}0.01$; pf16+noise).
+We evaluate all eight MD17 and four MD22 systems used in the main molecular tables (no $N$-body; no symplectic integrators).
+Tables~\ref{tab:gru_stab_bond_angle} and~\ref{tab:gru_stab_torsion} report 29-step bond, angle, and torsion drift for \GKE{}, vanilla \GGRU{}, and the three stabilizer arms.
+
+\begin{table}[H]
+\centering
+\caption{Bond and angle drift under \GGRU{} stabilizers (seed~$42$, horizon~$29$; lower is better). Vanilla \GGRU{} is the main-text baseline ($H{=}4$, $\sigma{=}0$). Bond/angle = mean absolute drift from each trajectory's own decoded frame at $t=0$.}
+\label{tab:gru_stab_bond_angle}
+{\footnotesize
+\setlength{\tabcolsep}{3.2pt}
+\begin{tabular}{l rr rr rr rr rr}
+\toprule
+ & \multicolumn{2}{c}{\GKE{}} & \multicolumn{2}{c}{Vanilla \GGRU{}} & \multicolumn{2}{c}{pf16} & \multicolumn{2}{c}{noise} & \multicolumn{2}{c}{pf16+noise} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}\cmidrule(lr){10-11}
+\textbf{System} & Bond & Ang. & Bond & Ang. & Bond & Ang. & Bond & Ang. & Bond & Ang. \\
+\midrule
+aspirin & 0.0011 & 0.066 & 0.0710 & 7.277 & 0.0339 & 1.155 & 0.0754 & 7.040 & 0.0367 & 1.431 \\
+benzene & 0.0088 & 0.450 & 0.0780 & 2.670 & 0.0290 & 1.535 & 0.0788 & 2.657 & 0.0290 & 1.531 \\
+ethanol & 0.0800 & 0.568 & 0.0826 & 3.832 & 0.1774 & 7.404 & 0.0875 & 4.159 & 0.1809 & 7.639 \\
+malonaldehyde & 0.1302 & 0.997 & 0.0972 & 4.580 & 0.2008 & 9.027 & 0.0990 & 4.444 & 0.2055 & 9.221 \\
+naphthalene & 0.0091 & 0.146 & 0.0367 & 0.344 & 0.0940 & 0.972 & 0.0394 & 0.355 & 0.0944 & 0.978 \\
+salicylic & 0.0037 & 0.453 & 0.0262 & 0.723 & 0.0280 & 0.851 & 0.0302 & 0.752 & 0.0280 & 0.771 \\
+toluene & 0.0199 & 0.744 & 0.0530 & 2.103 & 0.1142 & 5.418 & 0.0627 & 2.166 & 0.1163 & 5.189 \\
+uracil & 0.0018 & 0.169 & 0.0405 & 1.097 & 0.0282 & 0.918 & 0.0429 & 1.155 & 0.0342 & 1.063 \\
+ac-ala3-nhme & 0.0290 & 0.374 & 0.2048 & 9.538 & 0.1246 & 5.506 & 0.2055 & 9.557 & 0.1247 & 5.508 \\
+dha & 0.0116 & 0.581 & 0.1836 & 11.231 & 0.0860 & 7.587 & 0.1836 & 11.274 & 0.0879 & 7.209 \\
+at-at & 0.0383 & 0.474 & 0.2363 & 16.669 & 0.2839 & 21.864 & 0.2111 & 13.270 & 0.2834 & 21.857 \\
+stachyose & 0.0015 & 0.462 & 0.1557 & 9.329 & 0.3424 & 9.053 & 0.1516 & 9.109 & 0.3428 & 9.060 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Torsion drift in degrees under \GGRU{} stabilizers (seed~$42$, horizon~$29$; lower is better). Vanilla \GGRU{} is the main-text baseline ($H{=}4$, $\sigma{=}0$). Torsion = mean absolute drift from each trajectory's own decoded frame at $t=0$.}
+\label{tab:gru_stab_torsion}
+{\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{System} & \GKE{} & Vanilla \GGRU{} & pf16 & noise & pf16+noise \\
+\midrule
+aspirin & 0.069 & 7.297 & 1.240 & 6.967 & 1.656 \\
+benzene & 0.932 & 2.128 & 1.366 & 2.119 & 1.359 \\
+ethanol & 0.318 & 3.778 & 5.840 & 4.233 & 6.408 \\
+malonaldehyde & 1.473 & 4.027 & 5.701 & 3.989 & 5.461 \\
+naphthalene & 0.175 & 0.572 & 0.897 & 0.585 & 0.901 \\
+salicylic & 0.956 & 1.710 & 1.252 & 1.821 & 1.227 \\
+toluene & 1.309 & 2.059 & 3.390 & 2.316 & 3.524 \\
+uracil & 0.203 & 1.102 & 0.853 & 1.139 & 0.859 \\
+ac-ala3-nhme & 0.802 & 17.510 & 9.134 & 17.551 & 9.135 \\
+dha & 1.943 & 20.765 & 14.753 & 20.847 & 13.910 \\
+at-at & 0.779 & 23.221 & 35.178 & 18.923 & 35.214 \\
+stachyose & 1.436 & 11.521 & 11.067 & 11.312 & 11.075 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\paragraph{Takeaway.}
+Noise alone stays close to vanilla \GGRU{} on almost every row of Tables~\ref{tab:gru_stab_bond_angle} and~\ref{tab:gru_stab_torsion}.
+Pushforward (pf16) reduces angle and torsion on aspirin, benzene, ac-ala3-nhme, and dha, but \emph{increases} them on ethanol, malonaldehyde, naphthalene, toluene, and at-at; pf16+noise tracks pf16.
+Across all twelve systems, no stabilizer arm brings bond, angle, and torsion simultaneously within $2\times$ of \GKE{}.
+Under this protocol, longer pushforward and latent training noise do not close the decoded-$t=0$ bond/angle/torsion gap. This is not a claim that $SO(n)$ ``wins physics.''
+
+\section{Decoded RDF Pilot}
+\label{app:rdf_pilot}
+
+To probe distributional geometry beyond bond/angle/torsion scalars, we compute decoded all-pair radial histograms (RDF-style shell densities), scale-matched variants (isotropic rescaling to match mean bonded length), and bonded-distance histograms from 29-step rollouts of full-loss \GKE{} and vanilla \GGRU{} checkpoints.
+The sweep covers the same eight MD17 and four MD22 molecules, seeds $\{42,1337,2026\}$ ($36$ runs; no $N$-body).
+Table~\ref{tab:rdf_pilot_numbers} reports seed-mean absolute RDF L1 and bonded-histogram L1 at $t{=}29$, the corresponding horizon drifts $\Delta\mathrm{L1}$, and mean bonded lengths at $t{=}0$.
+Table~\ref{tab:rdf_pilot_wins} summarizes win counts over the $36$ individual runs.
+
+\begin{table}[H]
+\centering
+\caption{Decoded RDF pilot (seed mean over $\{42,1337,2026\}$). Abs.\ L1: all-pair RDF vs.\ GT at $t{=}29$. Bonded L1: bonded-distance histogram vs.\ GT at $t{=}29$. $\Delta$: $\mathrm{L1}(t{=}29)-\mathrm{L1}(t{=}0)$. Mean bond: average bonded length at $t{=}0$ (\AA). Lower L1 / lower $\Delta$ is better.}
+\label{tab:rdf_pilot_numbers}
+{\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{l rr rr rr rr rrr}
+\toprule
+ & \multicolumn{2}{c}{Abs.\ L1 $@29$} & \multicolumn{2}{c}{$\Delta$ Abs.} & \multicolumn{2}{c}{Bonded L1 $@29$} & \multicolumn{2}{c}{$\Delta$ Bonded} & \multicolumn{3}{c}{Mean bond $@0$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}\cmidrule(lr){10-12}
+\textbf{System} & \GKE{} & \GGRU{} & \GKE{} & \GGRU{} & \GKE{} & \GGRU{} & \GKE{} & \GGRU{} & \GKE{} & \GGRU{} & GT \\
+\midrule
+aspirin & 1.372 & 1.391 & $-0.002$ & $+0.249$ & 14.61 & 19.60 & $-0.23$ & $+5.88$ & 1.198 & 1.200 & 1.274 \\
+benzene & 1.810 & 1.219 & $+0.008$ & $+0.857$ & 28.39 & 24.99 & $+0.08$ & $+18.36$ & 1.044 & 1.235 & 1.250 \\
+ethanol & 1.683 & 0.710 & $+0.087$ & $+0.436$ & 27.39 & 17.41 & $-0.15$ & $+10.92$ & 1.364 & 1.191 & 1.188 \\
+malonaldehyde & 1.758 & 0.844 & $+0.016$ & $+0.563$ & 27.59 & 23.36 & $-7.06$ & $+16.42$ & 1.572 & 1.245 & 1.248 \\
+naphthalene & 0.822 & 0.868 & $+0.057$ & $+0.040$ & 17.55 & 14.46 & $+2.46$ & $+1.81$ & 1.237 & 1.290 & 1.282 \\
+salicylic & 1.012 & 0.601 & $-0.003$ & $+0.174$ & 20.56 & 13.37 & $+0.58$ & $+5.92$ & 1.079 & 1.261 & 1.269 \\
+toluene & 1.681 & 0.763 & $+0.009$ & $+0.428$ & 27.38 & 15.35 & $+2.39$ & $+10.64$ & 1.095 & 1.249 & 1.252 \\
+uracil & 1.350 & 0.432 & $+0.005$ & $-0.146$ & 19.52 & 10.23 & $+1.01$ & $-1.51$ & 1.107 & 1.291 & 1.260 \\
+ac-ala3-nhme & 1.072 & 1.114 & $+0.044$ & $+0.042$ & 18.45 & 17.38 & $-2.10$ & $+1.48$ & 1.269 & 1.191 & 1.247 \\
+dha & 1.408 & 1.353 & $+0.015$ & $+0.134$ & 22.33 & 25.97 & $-0.84$ & $+1.29$ & 1.272 & 1.093 & 1.249 \\
+at-at & 1.201 & 1.128 & $+0.005$ & $+0.320$ & 26.42 & 24.44 & $-1.34$ & $+3.94$ & 1.426 & 1.321 & 1.261 \\
+stachyose & 2.000 & 0.770 & $+0.000$ & $+0.168$ & 40.00 & 20.16 & $+0.00$ & $+1.12$ & 0.194 & 1.250 & 1.279 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Decoded RDF pilot win counts over $36$ runs (12 molecules $\times$ 3 seeds). Lower L1 / lower $\Delta\mathrm{L1}$ wins.}
+\label{tab:rdf_pilot_wins}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Metric} & \GKE{} wins & \GGRU{} wins \\
+\midrule
+Absolute RDF L1 @ $t{=}29$ & 6 & 30 \\
+Scale-matched RDF L1 @ $t{=}29$ & 6 & 30 \\
+Bonded-histogram L1 @ $t{=}29$ & 11 & 25 \\
+$\Delta$ Absolute L1 & 29 & 7 \\
+$\Delta$ Bonded L1 & 30 & 6 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Takeaway.}
+Fixed-time absolute RDF L1 usually favors \GGRU{} (e.g., benzene $1.22$ vs.\ $1.81$; Table~\ref{tab:rdf_pilot_numbers}), consistent with the win counts in Table~\ref{tab:rdf_pilot_wins}.
+Bonded L1 is mixed (aspirin and dha favor \GKE{}; most MD17 molecules favor \GGRU{}).
+Horizon drift $\Delta$ is the clearer \GKE{} signal: \GGRU{} bonded $\Delta$ is large on benzene ($+18.4$), ethanol ($+10.9$), and malonaldehyde ($+16.4$), while \GKE{} stays near-flat or negative.
+Mean bonded lengths are usually near GT; stachyose \GKE{} ($0.19$\,\AA\ vs.\ GT $1.28$\,\AA) is a decode-collapse outlier and should not be read as a fair RDF comparison.
+We treat RDFs as a \emph{stability} nuance complementary to Table~\ref{tab:wilcoxon}, not as evidence that \GKE{} matches ground-truth $g(r)$ better in absolute terms.
+Reported topology scores remain decoded-$t=0$ bond/angle/torsion and $R_{\text{norm}}$. Ablation tables additionally report decoded $R_{\text{edge}}$ (Appendix~\ref{app:loss_ablation}).
+
+\section{Latent Norm Ratio and Coordinate Edge Ratio Computation}
+\label{app:norm_ratio}
+
+We clarify the exact definitions and mathematical distinctions between the Latent Norm Ratio ($R_{\text{norm}}$) and the Decoded Coordinate Edge Ratio ($R_{\text{edge}}$):
+
+\paragraph{Latent Norm Ratio ($R_{\text{norm}}$).}
+Computes the ratio of mean squared latent representation norms at rollout step $T$ relative to step $0$: $R_{\text{norm}} = \mathbb{E}[\|\mathbf{h}_T\|_2^2] / \mathbb{E}[\|\mathbf{h}_0\|_2^2]$. For \GKE{}, $R_{\text{norm}} = 1$ in feature space is architectural: $\K = \exp(\Ask) \in SO(n)$ with implicit $\Delta t=1$ (Theorem~\ref{thm:so_n}.iii). $\mathcal{L}_{\text{collapse}}$ does not train $R_{\text{norm}}$.
+
+\paragraph{Decoded Coordinate Edge Ratio ($R_{\text{edge}}$).}
+Evaluates decoded bonded distances after non-linear decoding into 3D spatial coordinates, relative to the trajectory's own decoded $t=0$ frame: $R_{\text{edge}} = \frac{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(T) - \hat{\mathbf{x}}_j(T)\|}{\sum_{(i,j)\in E} \|\hat{\mathbf{x}}_i(0) - \hat{\mathbf{x}}_j(0)\|}$. Because the spatial decoder $\text{Decoder}: \mathbf{h} \mapsto \hat{\mathbf{x}}$ is a non-linear neural network, $R_{\text{edge}}$ is not constrained to be identically $1.0000$. $\mathcal{L}_{\text{iso}}$ additionally pushes bonded distances during training. This decoded-edge metric is reported in the auxiliary-loss ablation (Tables~\ref{tab:loss_ablation_aspirin}--\ref{tab:loss_ablation_expand}), not in Tables~\ref{tab:multiseed}, \ref{tab:app_results_md17}, or \ref{tab:app_results_md22}.
+
+The formal pseudocode procedure for computing the Decoded Coordinate Edge Ratio ($R_{\text{edge}}$) across an autoregressive rollout horizon is detailed in Algorithm~\ref{alg:coord_edge_ratio}.
+
+\begin{algorithm}[H]
+\caption{Decoded Coordinate Edge Length Ratio Computation ($R_{\text{edge}}$)}
+\label{alg:coord_edge_ratio}
+\begin{algorithmic}[1]
+\Require Predicted 3D spatial node coordinates $\hat{\mathbf{X}} \in \mathbb{R}^{B \times (T+1) \times N \times 3}$, graph edge index set $\mathcal{E} = \{(u_m, v_m)\}_{m=1}^E$, numerical stability constant $\varepsilon = 10^{-8}$.
+\Ensure Coordinate edge-length ratio vector $\mathbf{r} \in \mathbb{R}^{T+1}$ across rollout steps $t = 0, \dots, T$.
+\For{each rollout step $t = 0, \dots, T$}
+    \State Compute inter-atomic displacement vectors for all graph edges $(u_m, v_m) \in \mathcal{E}$:
+    \Statex \qquad $\mathbf{d}_m(t) \leftarrow \hat{\mathbf{x}}_{u_m}(t) - \hat{\mathbf{x}}_{v_m}(t) \quad \forall m \in \{1, \dots, E\}$
+    \State Calculate edge length norms: $\ell_m(t) \leftarrow \|\mathbf{d}_m(t)\|_2$
+    \State Calculate mean decoded edge length at step $t$: $E(t) \leftarrow \frac{1}{E} \sum_{m=1}^E \ell_m(t)$
+    \State Compute coordinate edge ratio relative to initial frame $t=0$:
+    \Statex \qquad $r(t) \leftarrow \frac{E(t)}{E(0) + \varepsilon}$
+\EndFor
+\State \Return $\mathbf{r} = [r(0), r(1), \dots, r(T)]$
+\end{algorithmic}
+\end{algorithm}
+
+\section{Code Availability \& Reproducibility}
+\label{app:code_reproducibility}
+
+To facilitate reproducible research, source code, evaluation pipelines, multi-seed training scripts, and dataset adapters are available at:
+
+\begin{center}
+\url{https://github.com/Abhilash437/Koopman-Graph-Evolver}
+\end{center}
+
+The repository includes:
+\begin{itemize}
+  \item Complete PyTorch implementations of \GKE{}, \EGKN{}, \GGRU{}, \FKoop{}, and \EGNN{}.
+  \item Standardized dataset adapters for MD17, MD22, and N-body physical systems.
+  \item Automated multi-seed evaluation suites and decoded diagnostic utilities for computing bond, angle, torsion, and (in the loss-ablation appendix) coordinate edge ratios ($R_{\text{edge}}$).
+  \item CLI and Streamlit GUI interfaces for executing training and evaluation pipelines.
+\end{itemize}
+
+\section{Use of AI Assistance}
+\label{app:ai_assistance}
+
+In accordance with conference publication policies, we disclose that AI coding assistants and large language models were utilized to assist with manuscript text polishing, formatting, grammatical refinement, and code optimization. All theoretical concepts, experimental architectures, empirical evaluations, and scientific conclusions were conceived, executed, and validated by us.
+
+\end{document}

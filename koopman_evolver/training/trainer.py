@@ -29,9 +29,8 @@ from koopman_evolver.data.dataset_split import GraphDatasetSplit
 
 class GraphTrainer:
     """
-    OBSOLETE: Legacy Trainer for Experiment 3 models (GraphKoopmanNet and GraphGRUNet).
-    Superseded by `GraphAwareTrainer` which actively monitors and minimizes the structural
-    `alpha` tradeoff parameter during training to preserve physical constraints.
+    OBSOLETE: Legacy trainer for GraphKoopmanNet / GraphGRUNet (not the paper).
+    Use GraphAwareTrainer. Does not conserve physical energy.
     """
     def __init__(
         self,
@@ -158,8 +157,8 @@ class GraphTrainer:
 
 class GraphAwareTrainer:
     """
-    Trainer for Graph dynamics models (GraphAwareKoopmanNet and GraphAwareGRUNet).
-    Guards checkpoints against trivial latent collapse.
+    Trainer for GraphAwareKoopmanNet / GraphAwareGRUNet (reported family).
+    Guards checkpoints against trivial encoder freeze (relative change < 1e-4).
     """
     def __init__(
         self,
@@ -215,6 +214,12 @@ class GraphAwareTrainer:
                     'epoch':            epoch,
                     'model_state_dict': self.model.state_dict(),
                     'val_r2':           val_r2,
+                    'loss_weights': {
+                        'dyn': float(getattr(self.model, 'lambda_dyn', 1.0)),
+                        'recon': float(getattr(self.model, 'lambda_recon', 10.0)),
+                        'collapse': float(getattr(self.model, 'lambda_collapse', 2.0)),
+                        'iso': float(getattr(self.model, 'lambda_iso', 5.0)),
+                    },
                 }, os.path.join(self.checkpoint_dir, self.checkpoint_name))
 
             if epoch % self.log_every == 0 or epoch == 1:
@@ -224,7 +229,10 @@ class GraphAwareTrainer:
                     f"Epoch {epoch:>3d}/{self.epochs} | "
                     f"Loss {avg_log.get('loss', 0):.4f} | "
                     f"l_dyn {avg_log.get('l_dyn', 0):.4f} | "
-                    f"l_recon {avg_log.get('l_recon', 0):.4f}{alpha_str} | "
+                    f"l_recon {avg_log.get('l_recon', 0):.4f} | "
+                    f"l_collapse {avg_log.get('l_collapse', 0):.4f} | "
+                    f"l_iso {avg_log.get('l_iso', 0):.4f}"
+                    f"{alpha_str} | "
                     f"Val R\u00b2 {val_r2:.4f}  {best_str}"
                 )
         print(f"\nBest \u2192 epoch {best_info['epoch']}, Val R\u00b2 = {best_info['val_r2']:.4f}")

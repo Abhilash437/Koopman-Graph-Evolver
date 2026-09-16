@@ -42,8 +42,8 @@ if st.button(f"Train {model_type.upper()} on {molecule.capitalize()}"):
         except Exception as e:
             st.error(f"Error during training: {e}")
 
-st.header("2. PhysicsEval Diagnostics")
-st.write("Run deep physical diagnostics (MSE, Graph Energy, Geometry Retention) on trained checkpoints.")
+st.header("2. Rollout diagnostics")
+st.write("Run diagnostics (MSE, latent-norm ratio, decoded t=0 bond/angle/torsion drift) on trained checkpoints.")
 
 # Standard Koopman vs GRU
 koop_ckpt = f"./checkpoints/graph_aware_koopman_{molecule}_best.pt"
