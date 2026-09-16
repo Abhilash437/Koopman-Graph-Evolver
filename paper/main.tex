@@ -82,9 +82,9 @@ Graph neural networks for physical simulation often keep one-step error low whil
 
 Graph neural networks (GNNs) have emerged as a principal tool for simulating complex physical systems, including molecular dynamics and particle interactions, by mapping snapshot graphs $\mathcal{G}_t$ to latent representations, executing a temporal transition, and decoding subsequent states~\citep{bronstein2021geometric}. While these models demonstrate strong short-horizon performance, their behavior over extended autoregressive rollouts presents critical failure modes. Specifically, how unconstrained temporal transitions affect latent manifold stability over long prediction steps remains insufficiently characterized.
 
-During multi-step prediction, standard recurrent transitions (e.g., GRUs) and unconstrained message-passing updates systematically alter latent representation magnitudes. Without structural constraints on the transition operator, latent vector norms expand or contract, causing compounding \emph{latent drift}. In decoded coordinates, this degradation shows up as structural distortion: on springs, Graph-GRU decoded $t=0$ bond drift is $0.6167\pm 0.0131$\,\AA\ and angle drift $46.5105\pm 0.8687^\circ$ (Table~\ref{tab:multiseed}, P3), and unconstrained latent-norm ratios diverge up to $109.5\times$ on \texttt{ac-ala3-nhme} (Section~\ref{sec:experiments}).
+During multi-step prediction, standard recurrent transitions (e.g., GRUs) and unconstrained message-passing updates systematically alter latent representation magnitudes. Without structural constraints on the transition operator, latent vector norms expand or contract, causing compounding \emph{latent drift}. In decoded coordinates, this degradation shows up as structural distortion: on springs, Graph-GRU decoded $t=0$ bond drift is $0.6167\pm 0.0131$\,\AA\ and angle drift $46.5105\pm 0.8687^\circ$ (Table~\ref{tab:multiseed}), and unconstrained latent-norm ratios diverge up to $109.5\times$ on \texttt{ac-ala3-nhme} (Section~\ref{sec:experiments}).
 
-Crucially, standard evaluation metrics often fail to reflect this decoded structural degradation. We observe an \emph{MSE paradox}: on the $N$-body \texttt{springs} benchmark, a Graph GRU obtains a lower P3 rollout MSE ($0.0455 \pm 0.0185$, with individual runs reaching $2.63\times10^{-2}$) than our proposed model ($0.1768 \pm 0.0030$), even as its P3 latent-norm ratio reaches $2.16\times$ and $t=0$ bond/angle/torsion drift show large decoded expansion (Table~\ref{tab:multiseed}). Mean squared error can reward models that collapse toward spatial centroids or expand uniformly, neither of which preserves inter-atomic topology.
+Crucially, standard evaluation metrics often fail to reflect this decoded structural degradation. We observe an \emph{MSE paradox}: on the $N$-body \texttt{springs} benchmark, a Graph GRU obtains a lower 3-seed rollout MSE ($0.0455 \pm 0.0185$, with individual runs reaching $2.63\times10^{-2}$) than our proposed model ($0.1768 \pm 0.0030$), even as its 3-seed latent-norm ratio reaches $2.16\times$ and $t=0$ bond/angle/torsion drift show large decoded expansion (Table~\ref{tab:multiseed}). Mean squared error can reward models that collapse toward spatial centroids or expand uniformly, neither of which preserves inter-atomic topology.
 
 These observations suggest a clear hypothesis: \emph{constraining the latent transition to preserve vector norms and volume will prevent unbounded latent-norm drift;} decoded topology may then drift less, which we treat as empirical.
 
@@ -96,7 +96,7 @@ Across 14 benchmark systems, empirical results show a stability--accuracy tradeo
 \begin{enumerate}
   \item We characterize an \emph{MSE-versus-topology diagnostic}: rollout MSE can miss decoded structural drift (bond/angle/torsion measured from decoded $t=0$, not vs.\ ground truth).
   \item We show that an \emph{orthogonal $SO(n)$ latent transition} is a useful inductive bias against multi-step latent-norm collapse and expansion (Theorem~\ref{thm:so_n} is latent-only).
-  \item We introduce \GKE{} and its $SE(3)$-equivariant extension \EGKN{}. Wilcoxon tests on those empirical $t=0$-drift scores favor \GKE{} vs.\ \GGRU{} on the 14-system \textbf{P1} single-seed sweep grid (Table~\ref{tab:wilcoxon}; not P3 seed-means); MSE is often higher for \GKE{}. \EGKN{} vs.\ \EGNN{} is an empirical protocol comparison, not an energy result.
+  \item We introduce \GKE{} and its $SE(3)$-equivariant extension \EGKN{}. Wilcoxon tests on those empirical $t=0$-drift scores favor \GKE{} vs.\ \GGRU{} on the 14-system single-seed appendix sweep (Table~\ref{tab:wilcoxon}; not the 3-seed means in Table~\ref{tab:multiseed}); MSE is often higher for \GKE{}. \EGKN{} vs.\ \EGNN{} is an empirical protocol comparison, not an energy result.
   \item We open-source our codebase, evaluation pipelines, and benchmark splits.
 \end{enumerate}
 
@@ -292,16 +292,16 @@ All models are trained for 100 epochs with \textbf{AdamW} ($\text{lr}=10^{-3}$, 
 
 Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22} present final-step $t=0$-drift metrics for \GKE{} versus \GGRU{} across all 14 systems. This tests whether an $SO(n)$ latent cell changes those empirical scores relative to an unconstrained GRU, not whether decoded molecules obey physical mechanics.
 
-Empirically, tabulated 14-system comparisons favor \GKE{} on $t=0$ bond/angle/torsion drift, with the usual MSE cost (Table~\ref{tab:wilcoxon} is the P1 sweep grid). On AT-AT (P3, Table~\ref{tab:multiseed}), \GGRU{} angle drift is $17.9786\pm 1.9597^\circ$ versus \GKE{} $0.6270\pm 0.2627^\circ$; P1 appendix angles (Table~\ref{tab:app_results_md22}) are a different protocol and are not multi-seed means. On malonaldehyde (P3), bond drift is $0.0905\pm 0.0303$\,\AA\ (\GKE{}) versus $0.0981\pm 0.0053$\,\AA\ (\GGRU{}). These are decoded-$t=0$ drifts, not vs.\ GT. Bonded margins are also trained by $\mathcal{L}_{\text{iso}}$ (Appendix~\ref{app:loss_ablation}).
+Empirically, tabulated 14-system comparisons favor \GKE{} on $t=0$ bond/angle/torsion drift, with the usual MSE cost (Table~\ref{tab:wilcoxon} is the single-seed appendix sweep). On AT-AT (Table~\ref{tab:multiseed}, 3-seed), \GGRU{} angle drift is $17.9786\pm 1.9597^\circ$ versus \GKE{} $0.6270\pm 0.2627^\circ$; appendix angles (Table~\ref{tab:app_results_md22}) are a different single-seed protocol and are not multi-seed means. On malonaldehyde (Table~\ref{tab:multiseed}), bond drift is $0.0905\pm 0.0303$\,\AA\ (\GKE{}) versus $0.0981\pm 0.0053$\,\AA\ (\GGRU{}). These are decoded-$t=0$ drifts, not vs.\ GT. Bonded margins are also trained by $\mathcal{L}_{\text{iso}}$ (Appendix~\ref{app:loss_ablation}).
 
 \subsection{Statistical Significance}
 \label{sec:stats}
 
-To check that the $t=0$-drift gaps are not a one-off row, we use one-sided Wilcoxon signed-rank tests on paired system metrics between \GKE{} and \GGRU{} on the 14-system \textbf{P1} single-seed appendix/sweep protocol (Tables~\ref{tab:app_results_md17}--\ref{tab:app_results_md22}), not P3 seed-means. This is not a proof of physical superiority.
+To check that the $t=0$-drift gaps are not a one-off row, we use one-sided Wilcoxon signed-rank tests on paired system metrics between \GKE{} and \GGRU{} on the 14-system single-seed appendix sweep (Tables~\ref{tab:app_results_md17}--\ref{tab:app_results_md22}), not the 3-seed means in Table~\ref{tab:multiseed}. This is not a proof of physical superiority.
 
 \begin{table}[htbp]
   \centering
-  \caption{One-sided Wilcoxon signed-rank test results comparing \GKE{} vs.\ \GGRU{} across 14 physical systems on the \textbf{P1} single-seed appendix/sweep protocol (Tables~\ref{tab:app_results_md17}--\ref{tab:app_results_md22}), not P3 seed-means. Bond/angle/torsion are drift from decoded $t=0$, not vs.\ ground-truth topology.}
+  \caption{One-sided Wilcoxon signed-rank test results comparing \GKE{} vs.\ \GGRU{} across 14 physical systems on the single-seed appendix sweep (Tables~\ref{tab:app_results_md17}--\ref{tab:app_results_md22}), not the 3-seed means in Table~\ref{tab:multiseed}. Bond/angle/torsion are drift from decoded $t=0$, not vs.\ ground-truth topology.}
   \label{tab:wilcoxon}
   \begin{tabular}{lccc}
     \toprule
@@ -315,7 +315,7 @@ To check that the $t=0$-drift gaps are not a one-off row, we use one-sided Wilco
   \end{tabular}
 \end{table}
 
-All listed $t=0$-drift scores favor \GKE{} on this P1 test ($p < 3.1\times10^{-4}$).
+All listed $t=0$-drift scores favor \GKE{} on this single-seed appendix test ($p < 3.1\times10^{-4}$).
 Coarse coordinate-norm retention is weaker ($p=0.076$). Wilcoxon is not a substitute for the MSE-versus-topology tradeoff, and it does not license an energy or Liouville claim.
 
 \subsection{Multi-Seed Robustness Across All 14 Systems}
@@ -323,19 +323,19 @@ Coarse coordinate-norm retention is weaker ($p=0.076$). Wilcoxon is not a substi
 
 To confirm that performance gains are robust across random weight initializations and not artifacts of seed selection, we conduct multi-seed training and evaluation across random seeds ($\{42, 1337, 2026\}$) for all 14 physical dynamical systems across all three ablation models (\GKE{}, \GGRU{}, and \FKoop{}).
 
-Table~\ref{tab:multiseed} summarizes representative systems: aspirin, malonaldehyde, AT-AT, and springs (P3). Full 14-system \emph{single-seed} rows are Appendix Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22} (P1); colliding cells are expected and are not P3 means.
+Table~\ref{tab:multiseed} summarizes representative systems: aspirin, malonaldehyde, AT-AT, and springs (3-seed aggregate). Full 14-system \emph{single-seed} rows are Appendix Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22}; colliding cells are expected and are not the 3-seed means.
 
-\paragraph{Seed protocols.}
-\textbf{P3}: train+eval mean$\pm$std over seeds $\{42, 1337, 2026\}$ (Table~\ref{tab:multiseed}).
-\textbf{P1}: single-seed appendix/sweep protocol (Tables~\ref{tab:app_results_md17}--\ref{tab:app_results_md22}).
-\textbf{P1-s42}: seed $42$ only (Appendix~\ref{app:gru_stabilizers}).
-\textbf{P3-noreg}: seeds $\{42,1337,2026\}$ with $\lambda_{\text{collapse}}=\lambda_{\text{iso}}=0$ (Appendix~\ref{app:loss_ablation}).
-Never cite a P1 cell as a multi-seed mean.
+\paragraph{Evaluation protocols.}
+\textbf{3-seed aggregate:} train+eval mean$\pm$std over seeds $\{42, 1337, 2026\}$ (Table~\ref{tab:multiseed}).
+\textbf{Single-seed appendix sweep:} one seed per system (Tables~\ref{tab:app_results_md17}--\ref{tab:app_results_md22}).
+\textbf{Seed-42 stabilizer appendix:} seed $42$ only (Appendix~\ref{app:gru_stabilizers}).
+\textbf{Auxiliary-loss ablated:} seeds $\{42,1337,2026\}$ with $\lambda_{\text{collapse}}=\lambda_{\text{iso}}=0$ (Appendix~\ref{app:loss_ablation}).
+Never cite a single-seed appendix cell as a multi-seed mean.
 \GKE{} $R_{\text{norm}}=1$ is architectural; $R_{\text{edge}}$ and bond/angle/torsion remain decoded $t=0$ scores (and iso-trained for bonds).
 
 \begin{table}[htbp]
 \centering
-\caption{3-seed aggregate (P3), seeds $\{42, 1337, 2026\}$. Springs MSE is P3 mean$\pm$sample stdev over seeds $\{42, 1337, 2026\}$. Other $\pm$ in this table are as previously reported (population std). Bond/angle/torsion columns are mean absolute drift from the trajectory's own decoded $t=0$ frame, not vs.\ ground-truth topology. $R_{\text{edge}}$ is likewise relative to decoded $t=0$ except springs \GGRU{}, which is omitted (no Phase-9 Option-B dump).}
+\caption{3-seed aggregate, seeds $\{42, 1337, 2026\}$. Springs MSE is mean$\pm$sample stdev over those seeds. Other $\pm$ in this table are as previously reported (population std). Bond/angle/torsion columns are mean absolute drift from the trajectory's own decoded $t=0$ frame, not vs.\ ground-truth topology. $R_{\text{edge}}$ is likewise relative to decoded $t=0$ except springs \GGRU{}, which is omitted (no Phase-9 Option-B dump).}
 \label{tab:multiseed}
 \resizebox{\textwidth}{!}{
 \begin{tabular}{llrrrrr}
@@ -396,7 +396,7 @@ AT-AT (MD22) & $9.18\times 10^{-2}$ & $2.55\times 10^{-4}$ \\
 \subsection{Case Studies: Dissecting the MSE Paradox}
 \label{sec:mse_paradox}
 
-\paragraph{$N$-body springs.} On springs (Table~\ref{tab:multiseed}, P3),\footnote{Springs MSE: P3 mean $\pm$ sample stdev over seeds $\{42,1337,2026\}$. G-GRU latent-norm $2.16\times$ is the P3 mean of per-seed ratios $2.1234$/$2.1141$/$2.2342$.} \GGRU{} has lower rollout MSE ($0.0455 \pm 0.0185$; individual runs reaching $2.63\times10^{-2}$) than \GKE{} ($0.1768 \pm 0.0030$), with P3 latent-norm ratio $2.16\times$. Structural quotes are the same P3 cells: bond $0.6167\pm 0.0131$\,\AA, angle $46.5105\pm 0.8687^\circ$, torsion $80.2149\pm 0.9485^\circ$ (decoded $t=0$ drift). Springs \GGRU{} coord $R_{\text{edge}}$ is omitted (no Phase-9 Option-B dump). That is the MSE-versus-topology diagnostic: MSE can reward near-uniform expansion.
+\paragraph{$N$-body springs.} On springs (Table~\ref{tab:multiseed}),\footnote{Springs MSE: mean $\pm$ sample stdev over seeds $\{42,1337,2026\}$. G-GRU latent-norm $2.16\times$ is the 3-seed mean of per-seed ratios $2.1234$/$2.1141$/$2.2342$.} \GGRU{} has lower rollout MSE ($0.0455 \pm 0.0185$; individual runs reaching $2.63\times10^{-2}$) than \GKE{} ($0.1768 \pm 0.0030$), with 3-seed latent-norm ratio $2.16\times$. Structural quotes are the same 3-seed cells: bond $0.6167\pm 0.0131$\,\AA, angle $46.5105\pm 0.8687^\circ$, torsion $80.2149\pm 0.9485^\circ$ (decoded $t=0$ drift). Springs \GGRU{} coord $R_{\text{edge}}$ is omitted (no Phase-9 Option-B dump). That is the MSE-versus-topology diagnostic: MSE can reward near-uniform expansion.
 
 \paragraph{MD22 AT-AT.} \GGRU{} $R_{\text{norm}}$ contracts ($0.63\times$); unconstrained \EGNN{} expands ($5.83\times$). \GKE{}/\EGKN{} keep latent $R_{\text{norm}}=1$ by the $SO(n)$ parameterization. Decoded $t=0$ topology scores remain empirical (Limitation~1).
 
@@ -628,7 +628,7 @@ The standard evaluation metric $\rho(\K_{\text{global}})$ reports the spectral r
 \section{Full Per-System Results}
 \label{app:full_results}
 
-We report parameter counts and rollout metrics for Flat Koopman, Graph Koopman, and Graph GRU across 14 systems. Table~\ref{tab:app_params} is parameter scaling. Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22} are \textbf{P1} single-seed sweep cells (not P3 means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT.
+We report parameter counts and rollout metrics for Flat Koopman, Graph Koopman, and Graph GRU across 14 systems. Table~\ref{tab:app_params} is parameter scaling. Tables~\ref{tab:app_results_md17} and \ref{tab:app_results_md22} are single-seed appendix sweep cells (not the 3-seed means in Table~\ref{tab:multiseed}). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT.
 
 \begin{table}[h]
 \centering
@@ -658,7 +658,7 @@ n-body (springs) & 467,151 & 93,264 & 114,128 \\
 
 \begin{table}[htbp]
 \centering
-\caption{P1 single-seed sweep protocol: MD17 systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Colliding cells with Table~\ref{tab:multiseed} (P3) are expected. MSE column is P1 sweep rollout MSE (not P3 means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. $R_{\text{edge}}$ is relative to decoded $t=0$.}
+\caption{Single-seed appendix sweep: MD17 systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Colliding cells with Table~\ref{tab:multiseed} (3-seed aggregate) are expected. MSE column is single-seed sweep rollout MSE (not 3-seed means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. $R_{\text{edge}}$ is relative to decoded $t=0$.}
 \label{tab:app_results_md17}
 \resizebox{\textwidth}{!}{
 \begin{tabular}{llrrrrrr}
@@ -702,7 +702,7 @@ n-body (springs) & 467,151 & 93,264 & 114,128 \\
 
 \begin{table}[htbp]
 \centering
-\caption{P1 single-seed sweep protocol: MD22 and N-body systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Colliding cells with Table~\ref{tab:multiseed} (P3) are expected. MSE column is P1 sweep rollout MSE (not P3 means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. Springs \GGRU{} coord $R_{\text{edge}}$ is omitted (no Phase-9 Option-B dump); latent $R_{\text{norm}}=1.9794$ is the verified P1 cell.}
+\caption{Single-seed appendix sweep: MD22 and N-body systems (Flat Koopman vs Graph Koopman vs Graph GRU). Not multi-seed means. Colliding cells with Table~\ref{tab:multiseed} (3-seed aggregate) are expected. MSE column is single-seed sweep rollout MSE (not 3-seed means). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT. Springs \GGRU{} coord $R_{\text{edge}}$ is omitted (no Phase-9 Option-B dump); latent $R_{\text{norm}}=1.9794$ is the verified single-seed cell.}
 \label{tab:app_results_md22}
 \resizebox{\textwidth}{!}{
 \begin{tabular}{llrrrrrr}
@@ -788,7 +788,7 @@ To test whether reported structural metrics depend on these two terms, we retrai
 \end{equation}
 i.e., $\lambda_{\text{collapse}}=\lambda_{\text{iso}}=0$, keeping all other hyperparameters fixed (Table~\ref{tab:hyperparams_summary}).
 We first compare \emph{full} vs.\ \emph{noreg} on MD17 aspirin (Table~\ref{tab:loss_ablation_aspirin}), then evaluate \emph{noreg} on MD17 malonaldehyde, benzene, and ethanol, and MD22 dha and at-at (Table~\ref{tab:loss_ablation_expand}).
-All entries are mean $\pm$ sample std over seeds $\{42, 1337, 2026\}$ at a 29-step horizon (\textbf{P3} for the full-loss aspirin row that matches Table~\ref{tab:multiseed}; \textbf{P3-noreg} for $\lambda_{\text{collapse}}=\lambda_{\text{iso}}=0$). Mean$\pm$std cells and win counts are log-verified; no numeric corrections. Option-B $R_{\text{edge}}$ in these tables is sourced and kept.
+All entries are mean $\pm$ sample std over seeds $\{42, 1337, 2026\}$ at a 29-step horizon (the full-loss aspirin row matches Table~\ref{tab:multiseed}; auxiliary-loss ablated when $\lambda_{\text{collapse}}=\lambda_{\text{iso}}=0$). Option-B $R_{\text{edge}}$ in these tables is sourced and kept.
 This ablation does not include $N$-body systems.
 
 \paragraph{Aspirin (full vs.\ noreg).}
@@ -800,7 +800,7 @@ Seed-averaged rollout MSE is lower for \GGRU{} under both settings.
 
 \begin{table}[H]
 \centering
-\caption{Aspirin loss ablation (P3 full vs.\ P3-noreg; mean $\pm$ sample std over seeds $\{42, 1337, 2026\}$). Full uses Eq.~\eqref{eq:total_loss}; noreg uses Eq.~\eqref{eq:noreg_loss}. Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT.}
+\caption{Aspirin loss ablation (full vs.\ auxiliary-loss ablated with collapse/iso off; mean $\pm$ sample std over seeds $\{42, 1337, 2026\}$). Full uses Eq.~\eqref{eq:total_loss}; noreg uses Eq.~\eqref{eq:noreg_loss}. Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT.}
 \label{tab:loss_ablation_aspirin}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{llrrrrrr}
@@ -827,7 +827,7 @@ Seed-averaged MSE is lower for \GGRU{} on every system in Table~\ref{tab:loss_ab
 
 \begin{table}[H]
 \centering
-\caption{Noreg ablation (P3-noreg; $\lambda_{\text{collapse}}=\lambda_{\text{iso}}=0$) on additional MD17/MD22 molecules (mean $\pm$ std over seeds $\{42, 1337, 2026\}$). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT.}
+\caption{Auxiliary-loss ablation (collapse/iso off) on additional MD17/MD22 molecules (mean $\pm$ std over seeds $\{42, 1337, 2026\}$). Bond/angle/torsion are drift from decoded $t=0$, not vs.\ GT.}
 \label{tab:loss_ablation_expand}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{llrrrrrr}
@@ -871,7 +871,7 @@ Tables~\ref{tab:gru_stab_bond_angle} and~\ref{tab:gru_stab_torsion} report 29-st
 
 \begin{table}[H]
 \centering
-\caption{Bond and angle drift under \GGRU{} stabilizers (P1-s42, seed~$42$, horizon~$29$). Bond in \AA{}; angle in degrees. Vanilla \GGRU{} is the main-text baseline ($H{=}4$, $\sigma{=}0$). Drift is from decoded $t=0$, not vs.\ GT. Lower is better.}
+\caption{Bond and angle drift under \GGRU{} stabilizers (seed~$42$, horizon~$29$). Bond in \AA{}; angle in degrees. Vanilla \GGRU{} is the main-text baseline ($H{=}4$, $\sigma{=}0$). Drift is from decoded $t=0$, not vs.\ GT. Lower is better.}
 \label{tab:gru_stab_bond_angle}
 {\footnotesize
 \setlength{\tabcolsep}{3.2pt}
@@ -899,7 +899,7 @@ stachyose & 0.0015 & 0.462 & 0.1557 & 9.329 & 0.3424 & 9.053 & 0.1516 & 9.109 & 
 
 \begin{table}[H]
 \centering
-\caption{Torsion drift in degrees under \GGRU{} stabilizers (P1-s42, seed~$42$, horizon~$29$). Vanilla \GGRU{} is the main-text baseline ($H{=}4$, $\sigma{=}0$). Drift is from decoded $t=0$, not vs.\ GT. Lower is better.}
+\caption{Torsion drift in degrees under \GGRU{} stabilizers (seed~$42$, horizon~$29$). Vanilla \GGRU{} is the main-text baseline ($H{=}4$, $\sigma{=}0$). Drift is from decoded $t=0$, not vs.\ GT. Lower is better.}
 \label{tab:gru_stab_torsion}
 {\footnotesize
 \setlength{\tabcolsep}{4pt}

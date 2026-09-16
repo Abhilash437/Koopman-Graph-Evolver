@@ -36,9 +36,9 @@ Default weights are **fixed** at **10 / 1 / 2 / 5** (reconstruction / dynamics /
 
 ## Empirical Benchmark Results (14 Physical Systems)
 
-### 1. Multi-seed robustness (P3, seeds {42, 1337, 2026})
+### 1. Multi-seed robustness (3-seed aggregate, seeds {42, 1337, 2026})
 
-Bond / angle / torsion = **decoded t=0 drift**, not vs GT. Baselines are **not** an identical-objective bake-off (G-GRU uses 4-step dyn unroll; Flat-K drops iso). **P3** = Table 2 3-seed aggregate; **P1** = appendix single-seed sweep (`sweep_20260716_161829`) — do not cite P1 cells as multi-seed means. Springs MSE is mean±sample stdev from 3-seed nbody logs (`multiseed_results_nbody*.txt`, seeds {42,1337,2026}).
+Bond / angle / torsion = **decoded t=0 drift**, not vs GT. Baselines are **not** an identical-objective bake-off (G-GRU uses 4-step dyn unroll; Flat-K drops iso). The table below is the 3-seed aggregate; appendix tables in the paper are a single-seed sweep — do not cite single-seed appendix cells as multi-seed means. Springs MSE is mean±sample stdev over seeds {42, 1337, 2026}.
 
 | System | Model | Rollout MSE (29-step) | Bond Drift (Å) | Angle Drift (°) | Torsion Drift (°) | Decoded Coord Edge Ratio ($R_{\text{edge}}$) |
 |:---|:---|:---:|:---:|:---:|:---:|:---:|
@@ -57,7 +57,7 @@ Bond / angle / torsion = **decoded t=0 drift**, not vs GT. Baselines are **not**
 
 ### 2. Statistical Significance Across All 14 Systems
 
-One-sided Wilcoxon on **decoded t=0 drift** (KGE vs G-GRU) on the **P1** single-seed appendix/sweep grid (`sweep_20260716_161829`), not P3 seed-means. Not a proof of physical superiority. MSE is often lower for G-GRU.
+One-sided Wilcoxon on **decoded t=0 drift** (KGE vs G-GRU) on the 14-system single-seed appendix sweep, not the 3-seed means in the table above. Not a proof of physical superiority. MSE is often lower for G-GRU.
 
 | Metric | KGE Win Rate | Wilcoxon Statistic | p-value |
 |:---|:---:|:---:|:---:|
@@ -168,7 +168,6 @@ docker compose run --build --rm koopman train --md22 stachyose --model koopman -
 │   └── cli.py                 # Command-line interface entrypoint
 ├── paper/                     # Manuscript source files, LaTeX tables, & figures
 │   └── main.tex               # Conference manuscript LaTeX source
-├── eval_logs/                 # Raw experimental log files & diagnostic evaluation outputs
 ├── app.py                     # Interactive Streamlit Web GUI Dashboard
 ├── requirements.txt           # Python package dependencies
 ├── Dockerfile                 # Container setup
