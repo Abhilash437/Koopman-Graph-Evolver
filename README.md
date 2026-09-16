@@ -53,15 +53,15 @@ Bond / angle / torsion = **decoded t=0 drift**, not vs GT. Baselines are **not**
 | | Graph GRU | 2.6390 ± 0.158 | 0.2514 ± 0.038 | 17.98 ± 1.96 | 26.37 ± 3.13 | 0.8675 |
 | **springs** | Flat Koopman | 0.1762 ± 0.0011 | 0.1075 ± 0.026 | 14.55 ± 2.87 | 29.38 ± 5.56 | 0.9827 |
 | | **Graph Koopman** | 0.1768 ± 0.003 | **0.0248 ± 0.009** | **2.59 ± 1.01** | **6.05 ± 1.79** | **1.0112** |
-| | Graph GRU | 0.0455 ± 0.0185 | 0.6167 ± 0.013 | 46.51 ± 0.87 | 80.21 ± 0.95 | 1.6290 |
+| | Graph GRU | 0.0455 ± 0.0185 | 0.6167 ± 0.013 | 46.51 ± 0.87 | 80.21 ± 0.95 | — |
 
 ### 2. Statistical Significance Across All 14 Systems
 
-One-sided Wilcoxon on **decoded t=0 drift** (KGE vs G-GRU). Not a proof of physical superiority. MSE is often lower for G-GRU. **Caveat:** available logs do not name whether the pairing used P3 means or P1 sweep cells; p-values are as previously reported and are not recomputed.
+One-sided Wilcoxon on **decoded t=0 drift** (KGE vs G-GRU) on the **P1** single-seed appendix/sweep grid (`sweep_20260716_161829`), not P3 seed-means. Not a proof of physical superiority. MSE is often lower for G-GRU.
 
 | Metric | KGE Win Rate | Wilcoxon Statistic | p-value |
 |:---|:---:|:---:|:---:|
-| **Bond Drift (Å)** | 13/14 | 1.5 | $3.05 \times 10^{-4}$ |
+| **Bond Drift (Å)** | 13/14 | 3.0 | $3.05 \times 10^{-4}$ |
 | **Angle Drift (°)** | 14/14 | 0.0 | $6.10 \times 10^{-5}$ |
 | **Torsion Drift (°)** | 14/14 | 0.0 | $6.10 \times 10^{-5}$ |
 | **Latent Norm Ratio \|R_norm - 1\|** | 14/14 | 0.0 | $6.10 \times 10^{-5}$ |
